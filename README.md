@@ -13,7 +13,16 @@ This project is an open-source, simplified showcase of advanced quantitative fin
 - **Deep Learning:** PyTorch — torch-native end to end, AAD via autograd
 - **Quantitative Finance:** custom differential ML implementations; optional QuantLib cross-validation (`[ql]` extra)
 - **Simulation:** Monte Carlo on torch tensors, CPU or CUDA on the same code path
-- **Visualization:** Matplotlib, Plotly
+- **Visualization:** Streamlit + Plotly (dashboard), Matplotlib for static figures
+
+## Dashboard
+Interactive pricer, dataset, and validation views computed live from this library:
+
+```bash
+uv run --extra app streamlit run app/dashboard.py
+```
+
+or with pip: `pip install -e .[app]` then `streamlit run app/dashboard.py`.
 
 ## Technical Architecture
 1. **Path Simulation Module:**

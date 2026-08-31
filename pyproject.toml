@@ -19,6 +19,8 @@ dependencies = [
 # QuantLib reference validation (SP1); not needed for the core package.
 ql = ["QuantLib>=1.33"]
 dev = ["pytest>=8", "ruff>=0.6"]
+# Interactive dashboard (app/dashboard.py).
+app = ["streamlit>=1.37", "plotly>=5.22"]
 # Conflicting torch builds: pick exactly one (see [tool.uv]).
 cpu = ["torch>=2.2"]
 gpu = ["torch>=2.7"]  # Blackwell (sm_120) needs cu128+

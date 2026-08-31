@@ -14,6 +14,9 @@ dist/
 reports/
 lightning_logs/
 
+# local planning notes — never shipped
+.notes/
+
 # OS
 .DS_Store
 Thumbs.db

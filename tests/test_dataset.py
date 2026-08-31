@@ -70,6 +70,37 @@ def test_label_invariants():
     assert bool((gamma >= 0.0).all() and (vega >= 0.0).all())
 
 
+def test_gradient_labels_match_finite_differences():
+    """g columns must be d(price)/d(feature), FEATURES order, theta negated.
+
+    Tolerance covers central-FD truncation, dominated by the maturity column
+    (theta's T-derivative grows fast as T -> 0); sign or column swaps would
+    miss by O(1).
+    """
+    d = _ds()
+    h = 1e-5
+    n = 64
+    xs, gs = d["x_val"][:n], d["g_val"][:n]
+    for i in range(n):
+        s0, k, t, sig = (float(v) for v in xs[i])
+        cols = [
+            (bs_price(torch.tensor([s0 + h], dtype=torch.float64), k, 0.05, 0.01, sig, t)
+             - bs_price(torch.tensor([s0 - h], dtype=torch.float64), k, 0.05, 0.01, sig, t))
+            / (2 * h),
+            (bs_price(torch.tensor([s0], dtype=torch.float64), k + h, 0.05, 0.01, sig, t)
+             - bs_price(torch.tensor([s0], dtype=torch.float64), k - h, 0.05, 0.01, sig, t))
+            / (2 * h),
+            (bs_price(torch.tensor([s0], dtype=torch.float64), k, 0.05, 0.01, sig, t + h)
+             - bs_price(torch.tensor([s0], dtype=torch.float64), k, 0.05, 0.01, sig, t - h))
+            / (2 * h),
+            (bs_price(torch.tensor([s0], dtype=torch.float64), k, 0.05, 0.01, sig + h, t)
+             - bs_price(torch.tensor([s0], dtype=torch.float64), k, 0.05, 0.01, sig - h, t))
+            / (2 * h),
+        ]
+        fd = torch.stack([c[0] for c in cols])
+        assert torch.allclose(gs[i], fd, atol=1e-5), i
+
+
 def test_validation_errors():
     try:
         make_european_dataset(train_frac=1.5)

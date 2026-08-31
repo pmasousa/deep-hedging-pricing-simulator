@@ -18,7 +18,7 @@ dependencies = [
 [project.optional-dependencies]
 # QuantLib reference validation (SP1); not needed for the core package.
 ql = ["QuantLib>=1.33"]
-dev = ["pytest>=8", "ruff>=0.6"]
+dev = ["pytest>=8", "ruff>=0.6", "matplotlib>=3.8"]
 # Interactive dashboard (app/dashboard.py).
 app = ["streamlit>=1.37", "plotly>=5.22"]
 # Conflicting torch builds: pick exactly one (see [tool.uv]).

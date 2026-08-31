@@ -40,6 +40,26 @@ def test_greeks_match_finite_differences():
     assert torch.allclose(g["rho"], rho_fd, atol=1e-5)
 
 
+def test_broadcast_matches_scalar_loop():
+    """Per-sample tensor parameters must equal elementwise scalar calls."""
+    s = torch.tensor([80.0, 100.0, 120.0], dtype=torch.float64)
+    k = torch.tensor([90.0, 105.0, 95.0], dtype=torch.float64)
+    sig = torch.tensor([0.15, 0.25, 0.35], dtype=torch.float64)
+    t = torch.tensor([0.3, 1.0, 1.7], dtype=torch.float64)
+
+    vec = bs_price(s, k, R, Q, sig, t)
+    loop = torch.stack([bs_price(s[i:i + 1], float(k[i]), R, Q,
+                                 float(sig[i]), float(t[i]))[0] for i in range(3)])
+    assert torch.allclose(vec, loop, atol=1e-12)
+
+    gv = bs_greeks(s, k, R, Q, sig, t)
+    gl = [bs_greeks(s[i:i + 1], float(k[i]), R, Q, float(sig[i]), float(t[i]))
+          for i in range(3)]
+    for name in gv:
+        stacked = torch.stack([g[name][0] for g in gl])
+        assert torch.allclose(gv[name], stacked, atol=1e-12)
+
+
 def test_theta_sign_convention():
     """Theta is per-year and negative for a long ATM call."""
     s = torch.tensor([100.0], dtype=torch.float64)

@@ -9,10 +9,12 @@ import streamlit as st
 import torch
 from plotly.subplots import make_subplots
 
+from dhps.bench.evaluate import evaluate_learner, greeks_curve, ood_metrics
 from dhps.datasets.european import FEATURES, LABELS, make_european_dataset
 from dhps.pricing.aad import bs_greeks_ad
 from dhps.pricing.black_scholes import bs_greeks, bs_price
 from dhps.pricing.pathwise_mc import pathwise_european_greeks
+from dhps.train.trainer import TrainConfig, train_model
 
 st.set_page_config(page_title="DHPS — Pricing & Differential ML", layout="wide")
 
@@ -164,6 +166,74 @@ def render_dataset() -> None:
         st.plotly_chart(fig, width="stretch")
 
 
+# ------------------------------------------------------------------- model --
+
+def render_model() -> None:
+    st.header("Differential ML: the learned pricer")
+    st.markdown(
+        "Two identical networks train on the same data: **baseline** sees "
+        "prices only; **DML** also sees the price's input-gradients "
+        "(the differential labels from the validation page). Both train "
+        "live in this session — small budget, a few seconds — and every "
+        "chart below is the resulting model, nothing pre-baked."
+    )
+    if "dml_result" not in st.session_state:
+        with st.spinner("Training both learners (~15 s)..."):
+            cfg = TrainConfig(n_samples=8_000, hidden=(48, 48), epochs=120,
+                              batch_size=4_096, seed=7)
+            st.session_state.dml_result = train_model(cfg, differential=True)
+            st.session_state.base_result = train_model(cfg, differential=False)
+            st.session_state.train_data = make_european_dataset(
+                n_samples=8_000, seed=7)
+    dml = st.session_state.dml_result
+    base = st.session_state.base_result
+    data = st.session_state.train_data
+
+    m_d, m_b = evaluate_learner(dml, data), evaluate_learner(base, data)
+    o_d, o_b = ood_metrics(dml), ood_metrics(base)
+    c1, c2 = st.columns(2)
+    c1.metric("Delta MAE — DML vs baseline",
+              f"{m_d['delta_mae']:.4f} vs {m_b['delta_mae']:.4f}",
+              f"{(1 - m_d['delta_mae'] / m_b['delta_mae']) * 100:.0f}% better")
+    c2.metric("Price MAE — DML vs baseline",
+              f"{m_d['price_mae']:.4f} vs {m_b['price_mae']:.4f}",
+              f"{(1 - m_d['price_mae'] / m_b['price_mae']) * 100:.0f}% better")
+    st.caption(
+        "Out-of-distribution (spots 25-45 and 210-240, outside the training "
+        f"range 50-200): DML price MAE {o_d['ood_price_mae']:.3f} vs baseline "
+        f"{o_b['ood_price_mae']:.3f} — both degrade, differential training "
+        "degrades less."
+    )
+
+    with st.sidebar:
+        st.subheader("Curve configuration")
+        strike = st.slider("Curve strike K", 70.0, 130.0, 100.0, 5.0)
+        t_mat = st.slider("Curve maturity T", 0.25, 2.0, 1.0, 0.25)
+        sigma = st.slider("Curve volatility", 0.05, 0.6, 0.2, 0.05)
+
+    spots = torch.linspace(50.0, 200.0, 300, dtype=torch.float64)
+    curves = {"DML": greeks_curve(dml, spots, strike, t_mat, sigma),
+              "baseline": greeks_curve(base, spots, strike, t_mat, sigma)}
+    tab_delta, tab_gamma = st.tabs(["Delta (the hero chart)", "Gamma (never a label)"])
+    for tab, greek in ((tab_delta, "delta"), (tab_gamma, "gamma")):
+        fig = go.Figure()
+        ref = curves["DML"]
+        fig.add_trace(go.Scatter(x=spots.tolist(), y=ref[f"{greek}_true"].tolist(),
+                                 name="analytic", line=dict(dash="dash", width=3)))
+        for name, c in curves.items():
+            fig.add_trace(go.Scatter(x=spots.tolist(), y=c[greek].tolist(),
+                                     name=name, line=dict(width=2)))
+        fig.update_xaxes(title_text="spot")
+        fig.update_yaxes(title_text=greek)
+        fig.update_layout(height=460, template=TEMPLATE)
+        tab.plotly_chart(fig, width="stretch")
+    st.info(
+        "**Gamma was never a training label.** It falls out of a second "
+        "autograd pass through the trained network — the differential "
+        "structure the model internalized, for free."
+    )
+
+
 # -------------------------------------------------------------- validation --
 
 def render_validation() -> None:
@@ -244,6 +314,7 @@ PAGES = {
     "Overview": render_overview,
     "Pricer & Greeks": render_pricer,
     "Training data": render_dataset,
+    "Learned pricer (DML)": render_model,
     "Validation": render_validation,
 }
 

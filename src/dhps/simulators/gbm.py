@@ -5,11 +5,17 @@ Exact (log-space) discretization under the risk-neutral measure:
     dS_t = (r - q) S_t dt + sigma S_t dW_t
     =>  log S_{t+dt} = log S_t + (r - q - sigma^2 / 2) dt + sigma sqrt(dt) Z
 
-Everything is torch-native so the same tensors feed the DML core later
-(AAD comes for free with autograd) and the GPU is one ``device=`` away.
-Antithetic variates are built by mirroring the normal draws, which also
-makes seeded runs exactly reproducible.
-"""
+    Everything is torch-native so the same tensors feed the DML core later
+    (AAD comes for free with autograd) and the GPU is one ``device=`` away.
+    Antithetic variates are built by mirroring the normal draws, which also
+    makes seeded runs exactly reproducible.
+
+    ``s0`` and ``sigma`` may be tensors with ``requires_grad=True`` (``sigma``
+    broadcastable against the path batch): the simulation graph is preserved,
+    so ``torch.autograd.grad`` through the paths yields pathwise Greeks.
+    """
+
+import math
 
 import torch
 
@@ -17,10 +23,10 @@ import torch
 def simulate_gbm(
     n_paths: int,
     n_steps: int,
-    s0: float = 100.0,
+    s0: float | torch.Tensor = 100.0,
     r: float = 0.05,
     q: float = 0.0,
-    sigma: float = 0.2,
+    sigma: float | torch.Tensor = 0.2,
     t_maturity: float = 1.0,
     antithetic: bool = True,
     device: str | torch.device = "cpu",
@@ -38,7 +44,9 @@ def simulate_gbm(
     """
     if n_paths < 1 or n_steps < 1:
         raise ValueError("n_paths and n_steps must be >= 1")
-    if sigma <= 0 or t_maturity <= 0 or s0 <= 0:
+    if (bool((torch.as_tensor(s0) <= 0).any())
+            or bool((torch.as_tensor(sigma) <= 0).any())
+            or t_maturity <= 0):
         raise ValueError("require s0 > 0, sigma > 0, t_maturity > 0")
     if antithetic and n_paths % 2 != 0:
         raise ValueError("antithetic=True requires an even n_paths")
@@ -57,10 +65,15 @@ def simulate_gbm(
     if antithetic:
         z = torch.cat([z, -z], dim=0)
 
-    drift = (r - q - 0.5 * sigma**2) * dt
-    log_increments = drift + sigma * (dt**0.5) * z
+    # per-path tensor leaves broadcast as columns against the (n_paths, n_steps) grid
+    sig = torch.as_tensor(sigma, dtype=dtype, device=device).reshape(-1, 1)
+    drift = (r - q - 0.5 * sig.square()) * dt
+    log_increments = drift + sig * (dt**0.5) * z
 
-    log_s0 = torch.log(torch.tensor(s0, dtype=dtype, device=device))
+    # as_tensor (not tensor) so a differentiable s0 stays attached to the graph
+    log_s0 = torch.log(torch.as_tensor(s0, dtype=dtype, device=device))
+    if log_s0.dim() > 0:
+        log_s0 = log_s0.reshape(-1, 1)  # row-broadcast a per-path s0
     log_s = torch.cat(
         [torch.zeros((n_paths, 1), dtype=dtype, device=device),
          torch.cumsum(log_increments, dim=1)],
@@ -86,4 +99,6 @@ def mc_european_price(
 ) -> float:
     """Discounted Monte Carlo estimate of a European vanilla price."""
     payoff = european_payoff(paths, strike, call=call)
-    return float(torch.exp(torch.tensor(-r * t_maturity)) * payoff.mean())
+    # math.exp, not torch.tensor(...): the tensor ctor defaults to float32
+    # and silently downgrades the discount factor
+    return math.exp(-r * t_maturity) * float(payoff.mean())

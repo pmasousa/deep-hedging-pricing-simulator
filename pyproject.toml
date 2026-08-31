@@ -1,0 +1,38 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "deep-hedging-pricing-simulator"
+version = "0.1.0"
+description = "Differential-ML pricing core and deep hedging under transaction costs, benchmarked against classical quants."
+readme = "README.md"
+requires-python = ">=3.11"
+license = { text = "MIT" }
+authors = [{ name = "Pedro Sousa" }]
+dependencies = [
+    "numpy>=1.26",
+    "torch>=2.2",
+]
+
+[project.optional-dependencies]
+# QuantLib reference validation (SP1); not needed for the core package.
+ql = ["QuantLib>=1.33"]
+dev = ["pytest>=8", "ruff>=0.6"]
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.ruff]
+line-length = 100
+src = ["src", "tests"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "N", "B"]
+
+[tool.ruff.lint.per-file-ignores]
+# script-style sys.path insertion before imports
+"scripts/*" = ["E402"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

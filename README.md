@@ -10,9 +10,9 @@ This project is an open-source, simplified showcase of advanced quantitative fin
 
 ## Tech Stack
 - **Language:** Python
-- **Deep Learning:** TensorFlow or PyTorch
-- **Quantitative Finance:** QuantLib, custom differential ML implementations
-- **Simulation:** Standard Monte Carlo simulators (e.g., using NumPy/CuPy)
+- **Deep Learning:** PyTorch — torch-native end to end, AAD via autograd
+- **Quantitative Finance:** custom differential ML implementations; optional QuantLib cross-validation (`[ql]` extra)
+- **Simulation:** Monte Carlo on torch tensors, CPU or CUDA on the same code path
 - **Visualization:** Matplotlib, Plotly
 
 ## Technical Architecture

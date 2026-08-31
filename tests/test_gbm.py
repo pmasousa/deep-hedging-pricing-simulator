@@ -85,6 +85,16 @@ def test_antithetic_seeded_reproducible_and_paired():
     assert torch.allclose(a[:, 0], torch.full((10_000,), S0, dtype=torch.float64))  # s0 anchor
 
 
+def test_seed_none_draws_fresh_entropy():
+    """seed=None must mean nondeterministic entropy, not a pinned stream."""
+    a = simulate_gbm(n_paths=64, n_steps=8, seed=None)
+    b = simulate_gbm(n_paths=64, n_steps=8, seed=None)
+    assert not torch.equal(a, b)
+    c = simulate_gbm(n_paths=64, n_steps=8, seed=5)
+    d = simulate_gbm(n_paths=64, n_steps=8, seed=5)
+    assert torch.equal(c, d)
+
+
 def test_shapes_and_validation():
     p = simulate_gbm(n_paths=8, n_steps=4, antithetic=True, seed=1)
     assert p.shape == (8, 5) and p.dtype == torch.float64

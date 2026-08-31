@@ -32,6 +32,9 @@ def simulate_gbm(
     With ``antithetic=True`` the effective sample count is still ``n_paths``:
     the first ``n_paths / 2`` normals Z are paired with ``-Z``. ``n_paths``
     must therefore be even when antithetic is on.
+
+    ``seed=None`` draws from the global generator (OS entropy): calls are
+    NOT reproducible. Pass an int for bit-identical reruns.
     """
     if n_paths < 1 or n_steps < 1:
         raise ValueError("n_paths and n_steps must be >= 1")
@@ -45,8 +48,12 @@ def simulate_gbm(
     dt = t_maturity / n_steps
 
     half = n_paths // 2 if antithetic else n_paths
-    gen = torch.Generator(device="cpu").manual_seed(seed if seed is not None else 0)
-    z = torch.randn((half, n_steps), generator=gen, dtype=dtype).to(device)
+    if seed is not None:
+        gen = torch.Generator(device="cpu").manual_seed(seed)
+        z = torch.randn((half, n_steps), generator=gen, dtype=dtype)
+    else:
+        z = torch.randn((half, n_steps), dtype=dtype)
+    z = z.to(device)
     if antithetic:
         z = torch.cat([z, -z], dim=0)
 

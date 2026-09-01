@@ -610,8 +610,7 @@ def render_validation() -> None:
         "strike: its second derivative is a Dirac delta, and autograd through "
         "`clamp` returns zero almost everywhere. The pathwise gamma estimator "
         "is invalid, not merely noisy — likelihood-ratio or Malliavin weights "
-        "would be needed. Excluding it is a correctness decision, not a "
-        "shortcut."
+        "would be needed."
     )
 
 

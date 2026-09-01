@@ -1,5 +1,7 @@
 # Deep Hedging & Pricing Simulator
 
+[![CI](https://github.com/pmasousa/deep-hedging-pricing-simulator/actions/workflows/ci.yml/badge.svg)](https://github.com/pmasousa/deep-hedging-pricing-simulator/actions/workflows/ci.yml)
+
 European option pricing and hedging in PyTorch, float64 throughout. Greeks
 are computed three independent ways (analytic Black-Scholes, autograd,
 pathwise Monte Carlo) and the test suite checks that they agree. Two models

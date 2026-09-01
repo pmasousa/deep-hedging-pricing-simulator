@@ -65,8 +65,9 @@ Pick a page above — every chart is computed live from this repo's library.
     cols[3].metric("Deep hedging", "beats delta under costs",
                    "CVaR95 -3.6 vs -4.2", delta_color="off")
     st.success(
-        "At matched accuracy, the trained network prices ~130,000x faster "
-        "than Monte Carlo on CPU (0.79 µs vs 104,000 µs per price)."
+        "Full-budget benchmark (100k samples, 300 epochs, price MAE 0.053): "
+        "the network prices ~130,000x faster than Monte Carlo at matched "
+        "accuracy on CPU, 0.79 µs vs 104,000 µs per price."
     )
     st.caption(
         "Tolerances are statistical: Monte Carlo gates use CLT bands, "
@@ -388,6 +389,12 @@ def render_model() -> None:
               f"{spd['mc_us']:,.0f} µs/price")
     k3.metric("Speed-up at matched error",
               f"{spd['mc_us'] / spd['batch_us']:,.0f}x")
+    st.caption(
+        f"Matched error moves with the model: this session's model has "
+        f"price MAE {m_d['price_mae']:.3f}, so Monte Carlo needs only "
+        f"{spd['n']:,} paths to match it. The full-budget benchmark "
+        f"(MAE 0.053, 73,544 paths) lands at ~130,000x."
+    )
 
 
 # --------------------------------------------------------------- hedging ---

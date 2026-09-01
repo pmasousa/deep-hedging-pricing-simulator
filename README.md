@@ -4,6 +4,8 @@
 
 Live results page: https://pmasousa.github.io/deep-hedging-pricing-simulator/
 
+![Demo: GBM paths, pricing, Greeks, DML training, deep hedging](assets/demo.gif)
+
 European option pricing and hedging in PyTorch, float64 throughout. Greeks
 are computed three independent ways (analytic Black-Scholes, autograd,
 pathwise Monte Carlo) and the test suite checks that they agree. Two models

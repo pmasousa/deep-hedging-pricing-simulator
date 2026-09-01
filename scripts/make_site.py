@@ -32,48 +32,60 @@ CSS = """
             'wght@400;600;700&display=swap');
 * { box-sizing: border-box; margin: 0; padding: 0; }
 body { font-family: 'Source Sans 3', 'Source Sans Pro', 'Segoe UI', sans-serif;
-       color: #31333f; background: #ffffff; max-width: 1080px;
+       color: #fafafa; background: #0e1117; max-width: 1080px;
        margin: 0 auto; padding: 40px 32px 72px; }
 h1 { font-size: 2rem; font-weight: 700; line-height: 1.2; }
 h2 { font-size: 1.4rem; font-weight: 700; margin: 36px 0 10px; }
 h3 { font-size: 1.05rem; font-weight: 700; margin: 24px 0 8px; }
-p.lead { font-size: 1rem; line-height: 1.5; max-width: 48rem; margin: 10px 0; }
-p.caption { font-size: 0.83rem; color: #7f8c99; line-height: 1.4;
+p.lead { font-size: 1rem; line-height: 1.5; max-width: 48rem; margin: 10px 0;
+         color: #c9cdd6; }
+p.caption { font-size: 0.83rem; color: #9ba1ad; line-height: 1.4;
             margin: 6px 0; }
 a { color: #ff4b4b; }
-.alert { background: #e8f7ee; color: #1e7a4d; border-radius: 8px;
+.alert { background: rgba(0, 204, 150, 0.12); color: #4ae290;
+         border: 1px solid rgba(0, 204, 150, 0.35); border-radius: 8px;
          padding: 12px 16px; font-size: 0.95rem; margin: 14px 0;
          max-width: 52rem; }
-.metrics { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px;
-           margin: 16px 0 6px; max-width: 52rem; }
-.metric .k { font-size: 0.8rem; color: #7f8c99; }
-.metric .v { font-size: 1.5rem; font-weight: 700; color: #31333f;
+.metrics { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px;
+           margin: 16px 0 6px; max-width: 56rem; }
+.metric { background: #262730; border-radius: 8px; padding: 12px 14px; }
+.metric .k { font-size: 0.8rem; color: #9ba1ad; }
+.metric .v { font-size: 1.4rem; font-weight: 700; color: #fafafa;
              margin: 2px 0; }
-.metric .s { font-size: 0.83rem; color: #7f8c99; }
+.metric .s { font-size: 0.8rem; color: #9ba1ad; }
 .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 20px;
          margin: 14px 0; }
+.panel { background: #262730; border-radius: 8px; padding: 14px; }
 .panel .t { font-size: 0.95rem; font-weight: 600; margin-bottom: 6px; }
 .chart { width: 100%; }
-table { border-collapse: collapse; width: 100%; max-width: 52rem; }
+table { border-collapse: collapse; width: 100%; max-width: 52rem;
+        background: #262730; border-radius: 8px; overflow: hidden; }
 th, td { text-align: left; padding: 7px 12px; font-size: 0.92rem; }
-th { background: #f0f2f6; color: #5b6171; font-weight: 600; }
-td { border-bottom: 1px solid #e6e8eb; }
-img.curve { width: 100%; max-width: 52rem; border: 1px solid #e6e8eb;
-            border-radius: 8px; }
-footer { margin-top: 48px; border-top: 1px solid #e6e8eb; padding-top: 12px; }
+th { background: #1a1c23; color: #9ba1ad; font-weight: 600; }
+td { border-bottom: 1px solid #363b45; }
+img.curve { width: 100%; max-width: 52rem; border: 1px solid #363b45;
+            border-radius: 8px; background: #ffffff; padding: 10px;
+            box-sizing: border-box; }
+footer { margin-top: 48px; border-top: 1px solid #363b45; padding-top: 12px; }
 @media (max-width: 800px) { .metrics { grid-template-columns: 1fr 1fr; }
                             .grid2 { grid-template-columns: 1fr; } }
 """
 
 PLOT_FONT = "'Source Sans 3', 'Segoe UI', sans-serif"
+TEXT = "#fafafa"
+MUTED = "#9ba1ad"
+GRID = "#33384a"
 
 
-def white_layout(**extra):
-    layout = {"font": {"family": PLOT_FONT, "color": "#31333f", "size": 13},
-              "paper_bgcolor": "#ffffff", "plot_bgcolor": "#ffffff",
-              "margin": {"t": 10, "r": 20, "b": 36, "l": 48},
-              "xaxis": {"gridcolor": "#ebebeb", "zeroline": False},
-              "yaxis": {"gridcolor": "#ebebeb", "zeroline": False}}
+def dark_layout(**extra):
+    layout = {"font": {"family": PLOT_FONT, "color": TEXT, "size": 13},
+              "paper_bgcolor": "rgba(0,0,0,0)",
+              "plot_bgcolor": "rgba(0,0,0,0)",
+              "margin": {"t": 14, "r": 14, "b": 42, "l": 50},
+              "xaxis": {"gridcolor": GRID, "zeroline": False},
+              "yaxis": {"gridcolor": GRID, "zeroline": False},
+              "legend": {"orientation": "h", "y": 1.18, "x": 0,
+                         "bgcolor": "rgba(0,0,0,0)"}}
     for key, val in extra.items():
         layout[key] = val
     return layout
@@ -108,7 +120,7 @@ def overview_panels() -> dict[str, list]:
          "fill": "tozeroy", "fillcolor": "rgba(239,85,59,0.25)",
          "hoverinfo": "skip", "showlegend": False},
         {"x": s_t.tolist(), "y": profit.tolist(), "mode": "lines",
-         "line": {"color": "#333333"}, "name": "profit at expiry"},
+         "line": {"color": "#fafafa"}, "name": "profit at expiry"},
         {"x": s_t.tolist(), "y": payoff.tolist(), "mode": "lines",
          "line": {"color": "#636EFA", "dash": "dash"}, "name": "payoff owed"},
     ]
@@ -205,22 +217,22 @@ def main() -> None:
                     "marker": {"color": ["#636EFA", "#00CC96", "#EF553B"]}}]
 
     strike_line = {"type": "line", "x0": 100, "x1": 100, "y0": 0, "y1": 1,
-                   "yref": "paper", "line": {"dash": "dot", "color": "gray"}}
-    payoff_layout = white_layout(
+                   "yref": "paper", "line": {"dash": "dot", "color": "#9ba1ad"}}
+    payoff_layout = dark_layout(
         xaxis={"title": "spot at expiry"},
         yaxis={"title": "$"},
         shapes=[strike_line])
-    fan_layout = white_layout(xaxis={"title": "time step"},
+    fan_layout = dark_layout(xaxis={"title": "time step"},
+                             yaxis={"title": "spot"})
+    heat_layout = dark_layout(xaxis={"title": "volatility"},
                               yaxis={"title": "spot"})
-    heat_layout = white_layout(xaxis={"title": "volatility"},
-                               yaxis={"title": "spot"})
-    sobol_layout = white_layout(xaxis={"title": "spot"},
-                                yaxis={"title": "volatility"})
-    speed_layout = white_layout(
+    sobol_layout = dark_layout(xaxis={"title": "spot"},
+                               yaxis={"title": "volatility"})
+    speed_layout = dark_layout(
         xaxis={"tickangle": -30},
         yaxis={"type": "log", "title": "µs per price"})
-    violins_layout = white_layout(yaxis={"title": "P&L per year"},
-                                  violingap=0.3)
+    violins_layout = dark_layout(yaxis={"title": "P&L per year"},
+                                 violingap=0.3)
 
     html = f"""<!doctype html>
 <html lang="en"><head><meta charset="utf-8">

@@ -412,15 +412,23 @@ PAGES = {
 
 
 def nav_bar() -> str:
-    """Top nav bar of plain buttons; the active page is highlighted."""
+    """Top nav bar of plain buttons; the active page is highlighted.
+
+    Clicks must be read from ``st.session_state`` BEFORE the buttons are
+    created: widget state updates before the rerun, while the button's
+    return value only arrives at creation time — too late to set its own
+    ``type`` on the click run, which left the highlight one rerun behind.
+    """
     current = st.session_state.get("page", next(iter(PAGES)))
+    for name in PAGES:
+        if st.session_state.get(f"nav_{name}"):
+            current = name
+    st.session_state.page = current
     cols = st.columns(len(PAGES))
     for col, name in zip(cols, PAGES, strict=True):
-        if col.button(name, key=f"nav_{name}",
-                      type="primary" if name == current else "secondary",
-                      width="stretch"):
-            st.session_state.page = name
-            current = name
+        col.button(name, key=f"nav_{name}",
+                   type="primary" if name == current else "secondary",
+                   width="stretch")
     return current
 
 

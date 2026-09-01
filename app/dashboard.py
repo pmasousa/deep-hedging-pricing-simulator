@@ -410,6 +410,19 @@ PAGES = {
     "Validation": render_validation,
 }
 
-st.sidebar.title("DHPS")
-choice = st.sidebar.radio("Section", list(PAGES))
-PAGES[choice]()
+
+def nav_bar() -> str:
+    """Top nav bar of plain buttons; the active page is highlighted."""
+    current = st.session_state.get("page", next(iter(PAGES)))
+    cols = st.columns(len(PAGES))
+    for col, name in zip(cols, PAGES, strict=True):
+        if col.button(name, key=f"nav_{name}",
+                      type="primary" if name == current else "secondary",
+                      width="stretch"):
+            st.session_state.page = name
+            current = name
+    return current
+
+
+page = nav_bar()
+PAGES[page]()

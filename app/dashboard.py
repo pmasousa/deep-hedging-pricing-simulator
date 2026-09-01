@@ -255,15 +255,32 @@ def render_model() -> None:
     spots = torch.linspace(50.0, 200.0, 300, dtype=torch.float64)
     curves = {"DML": greeks_curve(dml, spots, strike, t_mat, sigma),
               "baseline": greeks_curve(base, spots, strike, t_mat, sigma)}
+    # the training box is K/s0 in [0.6, 1.4] (times T, sigma ranges): a fixed-K
+    # spot sweep EXITS the box at both ends — that region is extrapolation
+    s_lo, s_hi = strike / 1.4, strike / 0.6
+    st.caption(
+        f"The shaded band is where this slice stays inside the training box "
+        f"(moneyness K/S within [0.6, 1.4], i.e. S in [{s_lo:.0f}, {s_hi:.0f}] "
+        f"for K={strike:.0f}). Outside it the networks extrapolate — watch "
+        f"delta leave [0, 1], its no-arbitrage bounds. The metric cards above "
+        f"score only in-distribution points."
+    )
     tab_delta, tab_gamma = st.tabs(["Delta (the hero chart)", "Gamma (never a label)"])
     for tab, greek in ((tab_delta, "delta"), (tab_gamma, "gamma")):
         fig = go.Figure()
+        fig.add_vrect(x0=s_lo, x1=s_hi, fillcolor="#00CC96", opacity=0.07,
+                      line_width=0, annotation_text="in-distribution",
+                      annotation_position="top")
         ref = curves["DML"]
         fig.add_trace(go.Scatter(x=spots.tolist(), y=ref[f"{greek}_true"].tolist(),
                                  name="analytic", line=dict(dash="dash", width=3)))
         for name, c in curves.items():
             fig.add_trace(go.Scatter(x=spots.tolist(), y=c[greek].tolist(),
                                      name=name, line=dict(width=2)))
+        if greek == "delta":  # no-arbitrage bounds for a vanilla's delta
+            fig.add_hline(y=0.0, line_dash="dot", line_color="gray",
+                          annotation_text="delta ∈ [0, 1]", annotation_position="left")
+            fig.add_hline(y=1.0, line_dash="dot", line_color="gray")
         fig.update_xaxes(title_text="spot")
         fig.update_yaxes(title_text=greek)
         fig.update_layout(height=460, template=TEMPLATE)
@@ -343,74 +360,70 @@ def render_hedging() -> None:
     )
 
     st.info(
-        "**How to read the chart below.** Every simulated year lands at its "
-        f"terminal P&L on the x-axis; bar height = how many of the "
-        f"{len(data['pnl']['no hedge']):,} simulated years land there. The "
-        "y-scale is LOGARITHMIC: on a linear scale the tall spike makes the "
-        "loss tail invisible, which reads as 'no hedge prints money'. It "
-        "does not — the tail is real."
+        "**How to read the charts below.** Each simulated year produces one "
+        "P&L number. The **violin** is that pile of years stood on its side: "
+        "wide = many years there, narrow = few, with the median (dot), the "
+        "middle 50% box, and the thin whiskers reaching to the disasters. "
+        "**std does NOT mean 'typical win'**: no hedge has std 15 around an "
+        "average of ≈ 0 — meaning years land anywhere from +10 to −50. Big "
+        "spread is bad, not good."
     )
 
-    fig = go.Figure()
     colors = {"no hedge": "#636EFA", "delta (weekly)": "#EF553B",
               "deep hedge (policy)": "#00CC96"}
+    fig = go.Figure()
     for name in names:
-        fig.add_trace(go.Histogram(x=data["pnl"][name], name=name,
-                                   marker_color=colors[name],
-                                   opacity=0.6, nbinsx=80))
-    # mean markers: the average year, dragged left by the tail
-    for name in names:
-        fig.add_vline(x=data["stats"][name]["mean"], line_dash="dash",
-                      line_color=colors[name], opacity=0.9)
-    n_years = len(data["pnl"]["no hedge"])
-    spike_share = sum(1 for x in data["pnl"]["no hedge"] if x > 9.0) / n_years
-    fig.add_annotation(
-        x=9.8, y=spike_share * n_years * 0.55,
-        text=(f"stock ends below strike:<br>payoff 0, keep the premium<br>"
-              f"({spike_share:.0%} of years)"),
-        showarrow=True, arrowhead=2, ax=-70, ay=-10, bgcolor="rgba(0,0,0,0.6)")
-    fig.add_annotation(
-        x=-30, y=40, text="rally years:<br>losses grow without bound",
-        showarrow=True, arrowhead=2, ax=-40, ay=-35, bgcolor="rgba(0,0,0,0.6)")
-    fig.update_layout(barmode="overlay", height=520, template=TEMPLATE,
-                      title_text="Terminal P&L per simulated year "
-                                 "(bar = number of years, log count; "
-                                 "dashed lines = average year)")
-    fig.update_xaxes(title_text="P&L of one simulated year ($)")
-    fig.update_yaxes(title_text="years (log scale)", type="log")
+        fig.add_trace(go.Violin(y=data["pnl"][name], name=name,
+                                line_color=colors[name], box_visible=True,
+                                meanline_visible=True, points=False,
+                                spanmode="hard"))
+    fig.add_hline(y=0.0, line_dash="dot", line_color="gray")
+    fig.update_layout(height=520, template=TEMPLATE,
+                      title_text="One violin per strategy: the shape of a "
+                                 "year's P&L (whiskers = the disasters)")
+    fig.update_yaxes(title_text="P&L of one simulated year ($)")
     st.plotly_chart(fig, width="stretch")
 
     s = data["stats"]
+    n_years = len(data["pnl"]["no hedge"])
+    spike_share = sum(1 for x in data["pnl"]["no hedge"] if x > 9.0) / n_years
     st.markdown(
-        f"### Is “no hedge” profitable? No — the spike is lying to you.\n\n"
-        f"The big blue bar is **{spike_share:.0%} of years**: the stock ends "
-        f"below the strike, the call expires worthless, and the naked seller "
-        f"pockets the ~9.8 premium. Those are the *good* years. But the thin "
-        f"blue tail stretching left is the *bad* years — stock rallies, the "
-        f"seller pays the payoff, and losses grow **without bound** (−20, "
-        f"−50, −100…). Average the two and the average year is "
-        f"**{s['no hedge']['mean']:+.2f}** — worse than delta "
+        f"### Is “no hedge” profitable? No — the fat right side is lying.\n\n"
+        f"About **{spike_share:.0%} of years** the stock ends below the "
+        f"strike, the call expires worthless and the naked seller pockets "
+        f"the ~9.8 premium — that's the wide right lobe of the blue violin. "
+        f"But the blue whisker plunges to −100: rally years, where losses "
+        f"are **unbounded**. Average the lobes together and the average year "
+        f"is **{s['no hedge']['mean']:+.2f}** — worse than delta "
         f"({s['delta (weekly)']['mean']:+.2f}) and the policy "
-        f"({s['deep hedge (policy)']['mean']:+.2f}). And the bad years are "
-        f"catastrophic: the worst 5% average {s['no hedge']['cvar95']:.1f}. "
-        f"That is the deal the metric cards are scoring: hedging gives up "
-        f"the spike (the hedger spends the premium building the stock "
-        f"position) to delete the tail."
+        f"({s['deep hedge (policy)']['mean']:+.2f}). Hedging gives up the "
+        f"right lobe (the hedge spends the premium) to amputate the left "
+        f"whisker."
     )
 
-    st.markdown("### Hedged strategies only (zoom)")
+    st.subheader("Chance of a bad year (loss exceedance)")
     st.caption(
-        "Both hedged books give up the +9.8 spike — their hedge costs money "
-        "in the good years — and in exchange their entire distribution fits "
-        "in a ±8 band instead of −100…+10."
+        "Pick a loss on the x-axis; the curve gives the probability that the "
+        "year ends AT OR BELOW it. Lower is safer. Where a curve crosses the "
+        "5% line is the start of that strategy's worst-5% zone. Read the gap: "
+        "at −20, the naked seller is around the 10% mark while hedged books "
+        "are already near zero."
     )
-    fig_zoom = go.Figure()
-    for name in names[1:]:
-        fig_zoom.add_trace(go.Histogram(x=data["pnl"][name], name=name,
-                                        opacity=0.65, nbinsx=80))
-    fig_zoom.update_layout(barmode="overlay", height=380, template=TEMPLATE)
-    fig_zoom.update_xaxes(title_text="P&L")
-    st.plotly_chart(fig_zoom, width="stretch")
+    fig_cdf = go.Figure()
+    for name in names:
+        pnl_sorted = torch.sort(torch.tensor(data["pnl"][name])).values
+        probs = (torch.arange(1, n_years + 1, dtype=torch.float64)
+                 / n_years)
+        fig_cdf.add_trace(go.Scatter(x=pnl_sorted.tolist(), y=probs.tolist(),
+                                     name=name, line=dict(color=colors[name],
+                                                          width=2.5)))
+    fig_cdf.add_hline(y=0.05, line_dash="dash", line_color="gray",
+                      annotation_text="worst 5% zone", annotation_position="top")
+    fig_cdf.update_xaxes(title_text="P&L threshold ($) — curve shows "
+                                    "P(year ends below this)")
+    fig_cdf.update_yaxes(title_text="probability", type="log")
+    fig_cdf.update_layout(height=460, template=TEMPLATE)
+    st.plotly_chart(fig_cdf, width="stretch")
 
     vol = data["volume"]
     st.markdown(

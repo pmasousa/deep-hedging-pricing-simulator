@@ -11,9 +11,12 @@ from plotly.subplots import make_subplots
 
 from dhps.bench.evaluate import evaluate_learner, greeks_curve, ood_metrics
 from dhps.datasets.european import FEATURES, LABELS, make_european_dataset
+from dhps.hedging.policy import DeepHedgeConfig, train_deep_hedge
+from dhps.hedging.simulator import cvar, delta_positions, hedge_pnl, premium_bs
 from dhps.pricing.aad import bs_greeks_ad
 from dhps.pricing.black_scholes import bs_greeks, bs_price
 from dhps.pricing.pathwise_mc import pathwise_european_greeks
+from dhps.simulators.gbm import simulate_gbm
 from dhps.train.trainer import TrainConfig, train_model
 
 st.set_page_config(page_title="DHPS — Pricing & Differential ML", layout="wide")
@@ -234,6 +237,94 @@ def render_model() -> None:
     )
 
 
+# --------------------------------------------------------------- hedging ---
+
+@st.cache_data(show_spinner="Training the deep-hedging policy (~20 s)...")
+def _hedge_results(cost: float) -> dict:
+    """Train the policy at this cost level and score every strategy on the
+    SAME eval paths. Returns plain floats/lists for caching."""
+    cfg = DeepHedgeConfig(n_paths=8_192, n_steps=26, cost_rate=cost,
+                          epochs=80, seed=7, eval_paths=4_096)
+    res = train_deep_hedge(cfg)
+    sim = dict(s0=cfg.s0, r=cfg.r, q=cfg.q, sigma=cfg.sigma,
+               t_maturity=cfg.t_maturity)
+    paths = simulate_gbm(n_paths=cfg.eval_paths, n_steps=cfg.n_steps,
+                         antithetic=True, seed=cfg.eval_seed, **sim)
+    premium = premium_bs(cfg.s0, cfg.strike, cfg.r, cfg.q, cfg.sigma,
+                         cfg.t_maturity)
+    delta = delta_positions(paths, cfg.strike, cfg.r, cfg.q, cfg.sigma,
+                            cfg.t_maturity)
+
+    def pnl_of(positions: torch.Tensor) -> torch.Tensor:
+        return hedge_pnl(paths, cfg.strike, premium, positions, cost)
+
+    strats = {"no hedge": pnl_of(torch.zeros_like(delta)),
+              "delta (weekly)": pnl_of(delta),
+              "deep hedge (policy)": res.eval_pnl}
+    out = {"pnl": {}, "stats": {}, "volume": {}}
+    for name, pnl in strats.items():
+        out["pnl"][name] = pnl.tolist()
+        out["stats"][name] = {"mean": float(pnl.mean()), "std": float(pnl.std()),
+                              "cvar95": cvar(pnl)}
+    trades_d = torch.cat([delta[:, :1], delta[:, 1:] - delta[:, :-1]], dim=1)
+    out["volume"]["delta (weekly)"] = float(trades_d.abs().sum(1).mean())
+    out["volume"]["deep hedge (policy)"] = res.metrics["traded_volume"]
+    out["train_seconds"] = res.seconds
+    return out
+
+
+def render_hedging() -> None:
+    st.header("Deep hedging under transaction costs")
+    st.markdown(
+        "The book: SHORT one at-the-money call (premium ~9.83), hedged by "
+        "trading stock at 26 dates over a year. Weekly delta hedging is the "
+        "1973 answer; the deep hedge is a policy network trained by "
+        "backpropagating a tail-risk penalty through simulated hedging "
+        "trajectories. Same paths, same costs, same premium — only the "
+        "trading rule differs."
+    )
+    cost = st.sidebar.slider("Transaction cost rate", 0.0, 0.02, 0.01, 0.0025,
+                             format="%.2f%%")
+    data = _hedge_results(cost)
+    names = list(data["pnl"])
+
+    cols = st.columns(3)
+    for col, name in zip(cols, names, strict=True):
+        s = data["stats"][name]
+        col.metric(f"{name} — CVaR95", f"{s['cvar95']:.2f}",
+                   f"mean {s['mean']:+.2f} · std {s['std']:.2f}")
+    st.caption(
+        "CVaR95 = average P&L of the worst 5% of simulated years (higher is "
+        "better). Hedging does NOT create profit: the option is priced "
+        "fairly, so expected P&L is ~0 by construction. The game is paying "
+        "less for the same protection — the policy's edge is cost "
+        "efficiency, not alpha."
+    )
+
+    fig = go.Figure()
+    for name in names:
+        fig.add_trace(go.Histogram(x=data["pnl"][name], name=name,
+                                   opacity=0.6, nbinsx=80))
+    fig.update_layout(barmode="overlay", height=480, template=TEMPLATE,
+                      title_text="Terminal hedging P&L distribution")
+    fig.update_xaxes(title_text="P&L")
+    st.plotly_chart(fig, width="stretch")
+
+    vol = data["volume"]
+    st.markdown(
+        f"**Traded volume** (avg sum of |Δ position| per path): "
+        f"delta {vol['delta (weekly)']:.2f} vs policy "
+        f"{vol['deep hedge (policy)']:.2f} — the policy trades less because "
+        "it learned that rebalancing deep ITM/OTM only pays costs, and "
+        "concentrates trading near the strike where gamma lives."
+    )
+    st.caption(
+        f"Policy trained live in {data['train_seconds']:.0f} s at this cost "
+        "level; changing the slider retrains. P&L is undiscounted — a stated "
+        "simplification shared by every strategy, so comparisons stay fair."
+    )
+
+
 # -------------------------------------------------------------- validation --
 
 def render_validation() -> None:
@@ -315,6 +406,7 @@ PAGES = {
     "Pricer & Greeks": render_pricer,
     "Training data": render_dataset,
     "Learned pricer (DML)": render_model,
+    "Deep hedging": render_hedging,
     "Validation": render_validation,
 }
 

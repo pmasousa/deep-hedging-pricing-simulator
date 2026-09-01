@@ -64,6 +64,7 @@ class DeepHedgeResult:
     history: dict[str, list[float]] = field(default_factory=dict)
     metrics: dict[str, float] = field(default_factory=dict)
     seconds: float = 0.0
+    eval_pnl: torch.Tensor | None = None  # best checkpoint's eval P&L, for plots
 
 
 def run_policy(policy: HedgePolicy, paths: torch.Tensor, strike: float,
@@ -140,7 +141,8 @@ def train_deep_hedge(cfg: DeepHedgeConfig) -> DeepHedgeResult:
                # little every date; cost awareness is total |Δposition|
                "traded_volume": float(trades.abs().sum(dim=1).mean())}
     return DeepHedgeResult(policy=policy, history=history, metrics=metrics,
-                           seconds=time.perf_counter() - t0)
+                           seconds=time.perf_counter() - t0,
+                           eval_pnl=pnl_e.detach())
 
 
 def delta_baseline_metrics(cfg: DeepHedgeConfig) -> dict[str, float]:

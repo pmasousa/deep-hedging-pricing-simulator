@@ -283,8 +283,10 @@ def render_hedging() -> None:
         "trajectories. Same paths, same costs, same premium — only the "
         "trading rule differs."
     )
-    cost = st.sidebar.slider("Transaction cost rate", 0.0, 0.02, 0.01, 0.0025,
-                             format="%.2f%%")
+    # percent units end to end: the slider reads in %, the model gets a fraction
+    cost_pct = st.sidebar.slider("Transaction cost rate", 0.0, 2.0, 1.0, 0.25,
+                                 format="%.2f%%")
+    cost = cost_pct / 100.0
     data = _hedge_results(cost)
     names = list(data["pnl"])
 
@@ -292,13 +294,14 @@ def render_hedging() -> None:
     for col, name in zip(cols, names, strict=True):
         s = data["stats"][name]
         col.metric(f"{name} — CVaR95", f"{s['cvar95']:.2f}",
-                   f"mean {s['mean']:+.2f} · std {s['std']:.2f}")
+                   f"mean {s['mean']:+.2f} · std {s['std']:.2f}",
+                   delta_color="off")
     st.caption(
         "CVaR95 = average P&L of the worst 5% of simulated years (higher is "
-        "better). Hedging does NOT create profit: the option is priced "
-        "fairly, so expected P&L is ~0 by construction. The game is paying "
-        "less for the same protection — the policy's edge is cost "
-        "efficiency, not alpha."
+        "better; negative is normal — it is a LOSS measure, not profit). "
+        "Hedging does NOT create profit: the option is priced fairly, so "
+        "expected P&L is ~0 by construction. The game is paying less for the "
+        "same protection — the policy's edge is cost efficiency, not alpha."
     )
 
     fig = go.Figure()
@@ -309,6 +312,20 @@ def render_hedging() -> None:
                       title_text="Terminal hedging P&L distribution")
     fig.update_xaxes(title_text="P&L")
     st.plotly_chart(fig, width="stretch")
+
+    st.markdown("### Hedged strategies only (zoom)")
+    st.caption(
+        "The naked spike at +9.8 (keeping the premium when the call expires "
+        "worthless) owns the y-axis above; this panel rescales to the two "
+        "hedged books, whose whole distribution fits in a ±8 band."
+    )
+    fig_zoom = go.Figure()
+    for name in names[1:]:
+        fig_zoom.add_trace(go.Histogram(x=data["pnl"][name], name=name,
+                                        opacity=0.65, nbinsx=80))
+    fig_zoom.update_layout(barmode="overlay", height=380, template=TEMPLATE)
+    fig_zoom.update_xaxes(title_text="P&L")
+    st.plotly_chart(fig_zoom, width="stretch")
 
     vol = data["volume"]
     st.markdown(

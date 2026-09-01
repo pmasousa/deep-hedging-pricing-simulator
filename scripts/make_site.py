@@ -195,9 +195,12 @@ def main() -> None:
         f"<td>{acc[name]['ood_price_mae']:.2f}</td>"
         f"<td>{acc[name]['ood_delta_mae']:.3f}</td></tr>"
         for name in ("dml", "baseline"))
+    def fmt_us(v: float) -> str:
+        return f"{v:,.0f}" if v >= 100 else f"{v:,.4g}"
+
     rows_speed = "".join(
         f"<tr><td>{r['device']}</td><td>{r['method']}</td>"
-        f"<td>{r['us_per_price']:,.4g}</td></tr>" for r in speed)
+        f"<td>{fmt_us(r['us_per_price'])}</td></tr>" for r in speed)
     mc_us = next(r["us_per_price"] for r in speed
                  if r["method"].startswith("monte carlo"))
     dml_us = next(r["us_per_price"] for r in speed
@@ -211,10 +214,20 @@ def main() -> None:
                 "line": {"color": STRATEGY_COLORS[n]},
                 "box": {"visible": True}, "meanline": {"visible": True},
                 "points": False} for n, v in hedging.items()]
+
+    def short_method(r: dict) -> str:
+        kind = "MC" if r["method"].startswith("monte carlo") else "DML"
+        detail = ("matched err" if kind == "MC"
+                  else "1 option" if "1 option" in r["method"] else "100k")
+        return f"{kind} {detail} ({r['device']})"
+
+    bar_colors = ["#EF553B" if r["method"].startswith("monte carlo")
+                  else "#636EFA" if r["device"] == "cpu" else "#00CC96"
+                  for r in speed]
     speed_trace = [{"type": "bar",
-                    "x": [f"{r['method']} ({r['device']})" for r in speed],
+                    "x": [short_method(r) for r in speed],
                     "y": [r["us_per_price"] for r in speed],
-                    "marker": {"color": ["#636EFA", "#00CC96", "#EF553B"]}}]
+                    "marker": {"color": bar_colors}}]
 
     strike_line = {"type": "line", "x0": 100, "x1": 100, "y0": 0, "y1": 1,
                    "yref": "paper", "line": {"dash": "dot", "color": "#9ba1ad"}}
@@ -229,8 +242,9 @@ def main() -> None:
     sobol_layout = dark_layout(xaxis={"title": "spot"},
                                yaxis={"title": "volatility"})
     speed_layout = dark_layout(
-        xaxis={"tickangle": -30},
-        yaxis={"type": "log", "title": "µs per price"})
+        xaxis={"tickangle": -20},
+        yaxis={"type": "log", "title": "µs per price"},
+        margin={"t": 14, "r": 20, "b": 88, "l": 60})
     violins_layout = dark_layout(yaxis={"title": "P&L per year"},
                                  violingap=0.3)
 

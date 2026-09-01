@@ -37,21 +37,12 @@ def render_overview() -> None:
     st.header("Deep Hedging & Pricing Simulator")
     st.markdown(
         """
-This repo prices European options and computes risk sensitivities (Greeks)
-three independent ways and makes them agree:
-
-1. **Analytic** — closed-form Black-Scholes formulas (the ground truth).
-2. **Autograd (AAD)** — the same pricer differentiated by PyTorch's automatic
-   differentiation instead of derived formulas.
-3. **Pathwise Monte Carlo** — Greeks by backpropagating *through simulated
-   asset paths*, the trick that makes differential ML possible.
-
-Both flagship models are trained live in this dashboard: a **differential
-ML pricer** (trained on prices *and* derivatives, Savine 2019) and a
-**deep-hedging policy** (trained under transaction costs, Buehler-style).
-Use the top navigation bar to explore — every chart on the following pages
-is computed live from the library in this repository. The status cards
-below summarize the offline benchmark suite results.
+European options priced and risk-managed three independent ways, forced to
+agree: **analytic Black-Scholes**, **autograd (AAD)**, and **pathwise Monte
+Carlo** (Greeks by backpropagating through simulated paths). On top of
+that, two models train live in this dashboard: a **differential ML pricer**
+(Savine) and a **deep-hedging policy** under transaction costs (Buehler).
+Pick a page above — every chart is computed live from this repo's library.
         """
     )
     st.subheader("Benchmark status")
@@ -76,8 +67,8 @@ below summarize the offline benchmark suite results.
 def render_pricer() -> None:
     st.header("Pricer & Greeks explorer")
     st.markdown(
-        "Closed-form prices and Greeks across a spot grid. Change the deal "
-        "parameters in the sidebar; every curve recomputes live."
+        "Closed-form prices and Greeks across a spot grid. Deal parameters "
+        "in the sidebar; curves recompute live."
     )
     with st.sidebar:
         st.subheader("Deal parameters")
@@ -172,31 +163,26 @@ def render_dataset() -> None:
             x=xs[:, 0].tolist(), y=xs[:, 3].tolist(),
             mode="markers", marker=dict(size=4, color=xs[:, 0] / xs[:, 1],
                                         colorscale="Viridis", showscale=True,
-                                        colorbar=dict(title="s0/K")),
+                                        colorbar=dict(title="moneyness s0/K")),
         ))
         scat.update_xaxes(title_text="spot")
         scat.update_yaxes(title_text="volatility")
         scat.update_layout(height=440, template=TEMPLATE)
         st.plotly_chart(scat, width="stretch")
     with right:
-        st.subheader("Why the labels are exact")
+        st.subheader("Notes")
         st.markdown(
-            "Every label comes from the closed-form pricer — no Monte Carlo "
-            "noise in training data. The color of each dot is the moneyness "
-            "s0/K: the sampler covers deep OTM through deep ITM uniformly, "
-            "which is why the learned pricer extrapolates gracefully."
-        )
-        st.markdown(
-            "The train/val split is a random permutation seeded from the "
-            "same seed as the Sobol draw — split composition is a function "
-            "of the seed alone, so runs are comparable."
+            "Labels come from the closed-form pricer — no simulation noise. "
+            "Color = moneyness s0/K. The train/val split depends only on the "
+            "seed, so runs are comparable."
         )
 
     st.subheader("Label distributions (one panel per label)")
     st.caption(
-        "Units are incompatible (price in $, gamma ~1e-2, theta negative), "
-        "so each label gets its own x-axis — a shared axis would pile "
-        "everything into spikes at zero."
+        "The spikes at exactly 0 (and 1 for delta) are real, not numerical "
+        "noise: the sampler includes deep-OTM/deep-ITM corners where the "
+        "normal CDF saturates to exactly 1.0 and gamma/vega underflow to "
+        "exactly 0.0 in float64."
     )
     fig = make_subplots(rows=2, cols=3, subplot_titles=list(LABELS))
     for j in range(len(LABELS)):
@@ -212,20 +198,18 @@ def render_dataset() -> None:
 def render_model() -> None:
     st.header("Differential ML: the learned pricer")
     st.markdown(
-        "Two identical networks train on the same data: **baseline** sees "
-        "prices only; **DML** also sees the price's input-gradients "
-        "(the differential labels from the validation page). Both train "
-        "live in this session — small budget, a few seconds — and every "
-        "chart below is the resulting model, nothing pre-baked."
+        "Two identical networks, same data: **baseline** sees prices only, "
+        "**DML** also sees the price gradients. Both train live in this "
+        "session; every chart below is the resulting model."
     )
     if "dml_result" not in st.session_state:
-        with st.spinner("Training both learners (~15 s)..."):
-            cfg = TrainConfig(n_samples=8_000, hidden=(48, 48), epochs=120,
-                              batch_size=4_096, seed=7)
+        with st.spinner("Training both learners (~40 s)..."):
+            cfg = TrainConfig(n_samples=20_000, hidden=(64, 64, 64),
+                              epochs=300, batch_size=8_192, seed=7)
             st.session_state.dml_result = train_model(cfg, differential=True)
             st.session_state.base_result = train_model(cfg, differential=False)
             st.session_state.train_data = make_european_dataset(
-                n_samples=8_000, seed=7)
+                n_samples=20_000, seed=7)
     dml = st.session_state.dml_result
     base = st.session_state.base_result
     data = st.session_state.train_data
@@ -240,10 +224,11 @@ def render_model() -> None:
               f"{m_d['price_mae']:.4f} vs {m_b['price_mae']:.4f}",
               f"{(1 - m_d['price_mae'] / m_b['price_mae']) * 100:.0f}% better")
     st.caption(
-        "Out-of-distribution (spots 25-45 and 210-240, outside the training "
-        f"range 50-200): DML price MAE {o_d['ood_price_mae']:.3f} vs baseline "
-        f"{o_b['ood_price_mae']:.3f} — both degrade, differential training "
-        "degrades less."
+        "Out-of-distribution check (spots 25-45, 210-240, outside training "
+        f"range): DML price MAE {o_d['ood_price_mae']:.3f} vs baseline "
+        f"{o_b['ood_price_mae']:.3f}. At this live budget extrapolation is "
+        "unreliable for both — OOD claims belong to the full-budget "
+        "benchmark, not a demo."
     )
 
     with st.sidebar:
@@ -252,25 +237,15 @@ def render_model() -> None:
         t_mat = st.slider("Curve maturity T", 0.25, 2.0, 1.0, 0.25)
         sigma = st.slider("Curve volatility", 0.05, 0.6, 0.2, 0.05)
 
-    spots = torch.linspace(50.0, 200.0, 300, dtype=torch.float64)
+    # keep the spot sweep inside the training box: moneyness K/S in [0.6, 1.4]
+    s_lo, s_hi = strike / 1.4, strike / 0.6
+    spots = torch.linspace(max(50.0, s_lo), min(200.0, s_hi), 300,
+                           dtype=torch.float64)
     curves = {"DML": greeks_curve(dml, spots, strike, t_mat, sigma),
               "baseline": greeks_curve(base, spots, strike, t_mat, sigma)}
-    # the training box is K/s0 in [0.6, 1.4] (times T, sigma ranges): a fixed-K
-    # spot sweep EXITS the box at both ends — that region is extrapolation
-    s_lo, s_hi = strike / 1.4, strike / 0.6
-    st.caption(
-        f"The shaded band is where this slice stays inside the training box "
-        f"(moneyness K/S within [0.6, 1.4], i.e. S in [{s_lo:.0f}, {s_hi:.0f}] "
-        f"for K={strike:.0f}). Outside it the networks extrapolate — watch "
-        f"delta leave [0, 1], its no-arbitrage bounds. The metric cards above "
-        f"score only in-distribution points."
-    )
-    tab_delta, tab_gamma = st.tabs(["Delta (the hero chart)", "Gamma (never a label)"])
+    tab_delta, tab_gamma = st.tabs(["Delta", "Gamma (not a label)"])
     for tab, greek in ((tab_delta, "delta"), (tab_gamma, "gamma")):
         fig = go.Figure()
-        fig.add_vrect(x0=s_lo, x1=s_hi, fillcolor="#00CC96", opacity=0.07,
-                      line_width=0, annotation_text="in-distribution",
-                      annotation_position="top")
         ref = curves["DML"]
         fig.add_trace(go.Scatter(x=spots.tolist(), y=ref[f"{greek}_true"].tolist(),
                                  name="analytic", line=dict(dash="dash", width=3)))
@@ -278,17 +253,15 @@ def render_model() -> None:
             fig.add_trace(go.Scatter(x=spots.tolist(), y=c[greek].tolist(),
                                      name=name, line=dict(width=2)))
         if greek == "delta":  # no-arbitrage bounds for a vanilla's delta
-            fig.add_hline(y=0.0, line_dash="dot", line_color="gray",
-                          annotation_text="delta ∈ [0, 1]", annotation_position="left")
+            fig.add_hline(y=0.0, line_dash="dot", line_color="gray")
             fig.add_hline(y=1.0, line_dash="dot", line_color="gray")
         fig.update_xaxes(title_text="spot")
         fig.update_yaxes(title_text=greek)
         fig.update_layout(height=460, template=TEMPLATE)
         tab.plotly_chart(fig, width="stretch")
     st.info(
-        "**Gamma was never a training label.** It falls out of a second "
-        "autograd pass through the trained network — the differential "
-        "structure the model internalized, for free."
+        "Gamma is not a training label — it comes from a second autograd "
+        "pass through the trained network."
     )
 
 
@@ -331,12 +304,11 @@ def _hedge_results(cost: float) -> dict:
 def render_hedging() -> None:
     st.header("Deep hedging under transaction costs")
     st.markdown(
-        "The book: SHORT one at-the-money call (premium ~9.83), hedged by "
-        "trading stock at 26 dates over a year. Weekly delta hedging is the "
-        "1973 answer; the deep hedge is a policy network trained by "
-        "backpropagating a tail-risk penalty through simulated hedging "
-        "trajectories. Same paths, same costs, same premium — only the "
-        "trading rule differs."
+        "The book: SHORT one at-the-money call (premium ~9.83), stock traded "
+        "at 26 dates over a year. Weekly delta is the classical rule; the "
+        "policy network is trained on tail risk through simulated "
+        "trajectories. Same paths, costs, premium — only the trading rule "
+        "differs."
     )
     # percent units end to end: the slider reads in %, the model gets a fraction
     cost_pct = st.sidebar.slider("Transaction cost rate", 0.0, 2.0, 1.0, 0.25,
@@ -360,13 +332,12 @@ def render_hedging() -> None:
     )
 
     st.info(
-        "**How to read the charts below.** Each simulated year produces one "
-        "P&L number. The **violin** is that pile of years stood on its side: "
-        "wide = many years there, narrow = few, with the median (dot), the "
-        "middle 50% box, and the thin whiskers reaching to the disasters. "
-        "**std does NOT mean 'typical win'**: no hedge has std 15 around an "
-        "average of ≈ 0 — meaning years land anywhere from +10 to −50. Big "
-        "spread is bad, not good."
+        "**How to read the charts.** Each simulated year produces one P&L "
+        "number. In the distribution plot: wide = many years there, the dot "
+        "is the median year, the box is the middle 50%, whiskers reach to "
+        "the disasters. std is spread around the average, NOT a typical win: "
+        "no hedge has std 15 around an average of ≈ 0 — years land anywhere "
+        "from +10 to −50."
     )
 
     colors = {"no hedge": "#636EFA", "delta (weekly)": "#EF553B",
@@ -379,8 +350,8 @@ def render_hedging() -> None:
                                 spanmode="hard"))
     fig.add_hline(y=0.0, line_dash="dot", line_color="gray")
     fig.update_layout(height=520, template=TEMPLATE,
-                      title_text="One violin per strategy: the shape of a "
-                                 "year's P&L (whiskers = the disasters)")
+                      title_text="P&L distribution per strategy "
+                                 "(dot = median, box = middle 50%)")
     fig.update_yaxes(title_text="P&L of one simulated year ($)")
     st.plotly_chart(fig, width="stretch")
 
@@ -388,55 +359,53 @@ def render_hedging() -> None:
     n_years = len(data["pnl"]["no hedge"])
     spike_share = sum(1 for x in data["pnl"]["no hedge"] if x > 9.0) / n_years
     st.markdown(
-        f"### Is “no hedge” profitable? No — the fat right side is lying.\n\n"
-        f"About **{spike_share:.0%} of years** the stock ends below the "
-        f"strike, the call expires worthless and the naked seller pockets "
-        f"the ~9.8 premium — that's the wide right lobe of the blue violin. "
-        f"But the blue whisker plunges to −100: rally years, where losses "
-        f"are **unbounded**. Average the lobes together and the average year "
-        f"is **{s['no hedge']['mean']:+.2f}** — worse than delta "
+        f"**No hedge is not profitable.** In ~{spike_share:.0%} of years the "
+        f"call expires worthless and the seller keeps the ~9.8 premium — but "
+        f"rally years lose without bound, so the average year is "
+        f"{s['no hedge']['mean']:+.2f}, below delta "
         f"({s['delta (weekly)']['mean']:+.2f}) and the policy "
-        f"({s['deep hedge (policy)']['mean']:+.2f}). Hedging gives up the "
-        f"right lobe (the hedge spends the premium) to amputate the left "
-        f"whisker."
+        f"({s['deep hedge (policy)']['mean']:+.2f}), and the worst 5% of "
+        f"years average {s['no hedge']['cvar95']:.1f}. Hedging gives up the "
+        f"good years to delete the bad ones."
     )
 
     st.subheader("Chance of a bad year (loss exceedance)")
     st.caption(
-        "Pick a loss on the x-axis; the curve gives the probability that the "
-        "year ends AT OR BELOW it. Lower is safer. Where a curve crosses the "
-        "5% line is the start of that strategy's worst-5% zone. Read the gap: "
-        "at −20, the naked seller is around the 10% mark while hedged books "
-        "are already near zero."
+        "Pick a P&L threshold on the x-axis; the curve gives the probability "
+        "that a year ends below it. Lower is safer; the dashed line marks "
+        "the 5% worst-years zone."
     )
     fig_cdf = go.Figure()
     for name in names:
         pnl_sorted = torch.sort(torch.tensor(data["pnl"][name])).values
         probs = (torch.arange(1, n_years + 1, dtype=torch.float64)
-                 / n_years)
+                 / n_years * 100.0)
         fig_cdf.add_trace(go.Scatter(x=pnl_sorted.tolist(), y=probs.tolist(),
                                      name=name, line=dict(color=colors[name],
                                                           width=2.5)))
-    fig_cdf.add_hline(y=0.05, line_dash="dash", line_color="gray",
-                      annotation_text="worst 5% zone", annotation_position="top")
-    fig_cdf.update_xaxes(title_text="P&L threshold ($) — curve shows "
-                                    "P(year ends below this)")
-    fig_cdf.update_yaxes(title_text="probability", type="log")
+    fig_cdf.add_hline(y=5.0, line_dash="dash", line_color="gray")
+    fig_cdf.update_xaxes(title_text="P&L threshold ($)")
+    fig_cdf.update_yaxes(
+        title_text="probability of a worse year (%)",
+        type="log",
+        tickvals=[0.1, 0.5, 1, 2, 5, 10, 25, 50, 100],
+        ticktext=["0.1%", "0.5%", "1%", "2%", "5%", "10%", "25%", "50%",
+                  "100%"],
+    )
     fig_cdf.update_layout(height=460, template=TEMPLATE)
     st.plotly_chart(fig_cdf, width="stretch")
 
     vol = data["volume"]
     st.markdown(
-        f"**Traded volume** (avg sum of |Δ position| per path): "
-        f"delta {vol['delta (weekly)']:.2f} vs policy "
-        f"{vol['deep hedge (policy)']:.2f} — the policy trades less because "
-        "it learned that rebalancing deep ITM/OTM only pays costs, and "
-        "concentrates trading near the strike where gamma lives."
+        f"**Traded volume** (avg Σ|Δ position| per path): delta "
+        f"{vol['delta (weekly)']:.2f} vs policy "
+        f"{vol['deep hedge (policy)']:.2f} — the policy trades less where "
+        "delta is flat and acts near the strike."
     )
     st.caption(
-        f"Policy trained live in {data['train_seconds']:.0f} s at this cost "
-        "level; changing the slider retrains. P&L is undiscounted — a stated "
-        "simplification shared by every strategy, so comparisons stay fair."
+        f"Policy retrained live in {data['train_seconds']:.0f} s at this "
+        "cost level. P&L is undiscounted — same simplification for every "
+        "strategy."
     )
 
 

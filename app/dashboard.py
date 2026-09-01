@@ -342,20 +342,67 @@ def render_hedging() -> None:
         "same protection — the policy's edge is cost efficiency, not alpha."
     )
 
+    st.info(
+        "**How to read the chart below.** Every simulated year lands at its "
+        f"terminal P&L on the x-axis; bar height = how many of the "
+        f"{len(data['pnl']['no hedge']):,} simulated years land there. The "
+        "y-scale is LOGARITHMIC: on a linear scale the tall spike makes the "
+        "loss tail invisible, which reads as 'no hedge prints money'. It "
+        "does not — the tail is real."
+    )
+
     fig = go.Figure()
+    colors = {"no hedge": "#636EFA", "delta (weekly)": "#EF553B",
+              "deep hedge (policy)": "#00CC96"}
     for name in names:
         fig.add_trace(go.Histogram(x=data["pnl"][name], name=name,
+                                   marker_color=colors[name],
                                    opacity=0.6, nbinsx=80))
-    fig.update_layout(barmode="overlay", height=480, template=TEMPLATE,
-                      title_text="Terminal hedging P&L distribution")
-    fig.update_xaxes(title_text="P&L")
+    # mean markers: the average year, dragged left by the tail
+    for name in names:
+        fig.add_vline(x=data["stats"][name]["mean"], line_dash="dash",
+                      line_color=colors[name], opacity=0.9)
+    n_years = len(data["pnl"]["no hedge"])
+    spike_share = sum(1 for x in data["pnl"]["no hedge"] if x > 9.0) / n_years
+    fig.add_annotation(
+        x=9.8, y=spike_share * n_years * 0.55,
+        text=(f"stock ends below strike:<br>payoff 0, keep the premium<br>"
+              f"({spike_share:.0%} of years)"),
+        showarrow=True, arrowhead=2, ax=-70, ay=-10, bgcolor="rgba(0,0,0,0.6)")
+    fig.add_annotation(
+        x=-30, y=40, text="rally years:<br>losses grow without bound",
+        showarrow=True, arrowhead=2, ax=-40, ay=-35, bgcolor="rgba(0,0,0,0.6)")
+    fig.update_layout(barmode="overlay", height=520, template=TEMPLATE,
+                      title_text="Terminal P&L per simulated year "
+                                 "(bar = number of years, log count; "
+                                 "dashed lines = average year)")
+    fig.update_xaxes(title_text="P&L of one simulated year ($)")
+    fig.update_yaxes(title_text="years (log scale)", type="log")
     st.plotly_chart(fig, width="stretch")
+
+    s = data["stats"]
+    st.markdown(
+        f"### Is “no hedge” profitable? No — the spike is lying to you.\n\n"
+        f"The big blue bar is **{spike_share:.0%} of years**: the stock ends "
+        f"below the strike, the call expires worthless, and the naked seller "
+        f"pockets the ~9.8 premium. Those are the *good* years. But the thin "
+        f"blue tail stretching left is the *bad* years — stock rallies, the "
+        f"seller pays the payoff, and losses grow **without bound** (−20, "
+        f"−50, −100…). Average the two and the average year is "
+        f"**{s['no hedge']['mean']:+.2f}** — worse than delta "
+        f"({s['delta (weekly)']['mean']:+.2f}) and the policy "
+        f"({s['deep hedge (policy)']['mean']:+.2f}). And the bad years are "
+        f"catastrophic: the worst 5% average {s['no hedge']['cvar95']:.1f}. "
+        f"That is the deal the metric cards are scoring: hedging gives up "
+        f"the spike (the hedger spends the premium building the stock "
+        f"position) to delete the tail."
+    )
 
     st.markdown("### Hedged strategies only (zoom)")
     st.caption(
-        "The naked spike at +9.8 (keeping the premium when the call expires "
-        "worthless) owns the y-axis above; this panel rescales to the two "
-        "hedged books, whose whole distribution fits in a ±8 band."
+        "Both hedged books give up the +9.8 spike — their hedge costs money "
+        "in the good years — and in exchange their entire distribution fits "
+        "in a ±8 band instead of −100…+10."
     )
     fig_zoom = go.Figure()
     for name in names[1:]:

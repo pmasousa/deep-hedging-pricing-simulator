@@ -369,29 +369,36 @@ def render_hedging() -> None:
         f"good years to delete the bad ones."
     )
 
-    st.subheader("Chance of a bad year (loss exceedance)")
+    st.subheader("Chance of losing more than L in a year")
     st.caption(
-        "Pick a P&L threshold on the x-axis; the curve gives the probability "
-        "that a year ends below it. Lower is safer; the dashed line marks "
-        "the 5% worst-years zone."
+        "Pick a loss L on the x-axis; the curve gives the probability that "
+        "the year loses MORE than L. Lower is safer. Where each curve starts "
+        "at L=0 is that strategy's chance of a losing year at all; where it "
+        "crosses the 5% line is its worst-5% loss (the cards' CVaR95 is the "
+        "average beyond that point)."
     )
     fig_cdf = go.Figure()
+    x_max = 0.0
     for name in names:
         pnl_sorted = torch.sort(torch.tensor(data["pnl"][name])).values
+        losses = -pnl_sorted  # ascending P&L -> descending loss; worst year first
         probs = (torch.arange(1, n_years + 1, dtype=torch.float64)
                  / n_years * 100.0)
-        fig_cdf.add_trace(go.Scatter(x=pnl_sorted.tolist(), y=probs.tolist(),
+        x_max = max(x_max, float(losses.max()))
+        fig_cdf.add_trace(go.Scatter(x=losses.tolist(), y=probs.tolist(),
                                      name=name, line=dict(color=colors[name],
                                                           width=2.5)))
     fig_cdf.add_hline(y=5.0, line_dash="dash", line_color="gray")
-    fig_cdf.update_xaxes(title_text="P&L threshold ($)")
+    fig_cdf.update_xaxes(title_text="loss L ($)")
     fig_cdf.update_yaxes(
-        title_text="probability of a worse year (%)",
+        title_text="probability of losing more than L (%)",
         type="log",
+        range=[math.log10(100.0 / n_years) - 0.15, 2.05],
         tickvals=[0.1, 0.5, 1, 2, 5, 10, 25, 50, 100],
         ticktext=["0.1%", "0.5%", "1%", "2%", "5%", "10%", "25%", "50%",
                   "100%"],
     )
+    fig_cdf.update_xaxes(range=[0, x_max * 1.02])
     fig_cdf.update_layout(height=460, template=TEMPLATE)
     st.plotly_chart(fig_cdf, width="stretch")
 

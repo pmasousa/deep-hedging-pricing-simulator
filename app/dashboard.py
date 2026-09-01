@@ -12,6 +12,7 @@ import torch
 from plotly.subplots import make_subplots
 
 from dhps.bench.evaluate import evaluate_learner, greeks_curve, ood_metrics
+from dhps.bench.speed import mc_paths_for_error, payoff_std, price_one_option_mc, time_fn
 from dhps.datasets.european import FEATURES, LABELS, make_european_dataset
 from dhps.hedging.policy import DeepHedgeConfig, train_deep_hedge
 from dhps.hedging.simulator import cvar, delta_positions, hedge_pnl, premium_bs
@@ -263,6 +264,37 @@ def render_model() -> None:
         "Gamma is not a training label — it comes from a second autograd "
         "pass through the trained network."
     )
+
+    st.subheader("Speed vs Monte Carlo")
+    st.caption(
+        "Same accuracy, different cost: the trained net prices a batch in "
+        "microseconds; Monte Carlo is timed at the path count its CLT error "
+        "needs to match this model's price accuracy."
+    )
+
+    if "speed" not in st.session_state:
+        with st.spinner("Timing inference vs Monte Carlo..."):
+            p_std = payoff_std()
+            n_matched = mc_paths_for_error(p_std, m_d["price_mae"])
+            xs = torch.randn(100_000, 4, dtype=torch.float64)
+            model = st.session_state.dml_result.model
+
+            def batch():
+                with torch.no_grad():
+                    model(xs)
+
+            t_batch = time_fn(batch)
+            t_mc = time_fn(lambda: price_one_option_mc(n_matched), repeats=3)
+            st.session_state.speed = {
+                "n": n_matched, "batch_us": t_batch * 1e6 / 100_000,
+                "mc_us": t_mc * 1e6}
+    spd = st.session_state.speed
+    k1, k2, k3 = st.columns(3)
+    k1.metric("DML, batched 100k", f"{spd['batch_us']:.2f} µs/price")
+    k2.metric(f"Monte Carlo ({spd['n']:,} paths)",
+              f"{spd['mc_us']:,.0f} µs/price")
+    k3.metric("Speed-up at matched error",
+              f"{spd['mc_us'] / spd['batch_us']:,.0f}x")
 
 
 # --------------------------------------------------------------- hedging ---

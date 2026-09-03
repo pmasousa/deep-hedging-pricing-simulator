@@ -403,11 +403,11 @@ def render_model() -> None:
 # --------------------------------------------------------------- hedging ---
 
 @st.cache_data(show_spinner="Training the deep-hedging policy (~20 s)...")
-def _hedge_results(cost: float) -> dict:
+def _hedge_results(cost: float, lambd: float) -> dict:
     """Train the policy at this cost level and score every strategy on the
     SAME eval paths. Returns plain floats/lists for caching."""
     cfg = DeepHedgeConfig(n_paths=8_192, n_steps=26, cost_rate=cost,
-                          epochs=80, seed=7, eval_paths=4_096)
+                          lambd=lambd, epochs=80, seed=7, eval_paths=4_096)
     res = train_deep_hedge(cfg)
     sim = dict(s0=cfg.s0, r=cfg.r, q=cfg.q, sigma=cfg.sigma,
                t_maturity=cfg.t_maturity)
@@ -450,8 +450,10 @@ def render_hedging() -> None:
     # percent units end to end: the slider reads in %, the model gets a fraction
     cost_pct = st.sidebar.slider("Transaction cost rate", 0.0, 2.0, 1.0, 0.25,
                                  format="%.2f%%")
+    lambd = st.sidebar.select_slider(
+        "Risk aversion λ (entropic)", (0.25, 0.5, 1.0, 2.0, 4.0))
     cost = cost_pct / 100.0
-    data = _hedge_results(cost)
+    data = _hedge_results(cost, lambd)
     names = list(data["pnl"])
 
     cols = st.columns(3)

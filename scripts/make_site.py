@@ -282,6 +282,11 @@ def main() -> None:
          "y": [r["delta_cvar"] for r in walk_rows_data],
          "marker": {"color": "#636EFA"}},
     ]
+    # ablations: committed artifacts from scripts/ablations.py; the site
+    # degrades gracefully when the study hasn't been run
+    abl_path = ROOT / "reports" / "ablations" / "latest.json"
+    ablations = (json.loads(abl_path.read_text())
+                 if abl_path.exists() else None)
     panels = overview_panels()
     png_b64 = base64.b64encode((run_dir / "greeks_curves.png").read_bytes())
 
@@ -445,6 +450,58 @@ plot('c-heston-price', {json.dumps(cv_price_trace)},
         cv_section = ""
         cv_script = ""
 
+    if ablations is not None:
+        lam_keys = list(ablations["lambdas"])
+        lam_cvars = [ablations["lambdas"][k]["policy"]["cvar95"]
+                     for k in lam_keys]
+        lam_means = [ablations["lambdas"][k]["policy"]["mean"]
+                     for k in lam_keys]
+        cost_keys = list(ablations["costs"])
+        abl_cost_trace = [
+            {"type": "bar", "x": cost_keys, "name": "deep hedge (policy)",
+             "y": [ablations["costs"][k]["policy"]["cvar95"] for k in
+                   cost_keys], "marker": {"color": "#00CC96"}},
+            {"type": "bar", "x": cost_keys, "name": "delta (weekly)",
+             "y": [ablations["costs"][k]["delta"]["cvar95"] for k in
+                   cost_keys], "marker": {"color": "#636EFA"}},
+        ]
+        abl_lam_trace = [
+            {"type": "bar", "x": lam_keys, "name": "CVaR95",
+             "y": lam_cvars, "marker": {"color": "#00CC96"}},
+            {"type": "bar", "x": lam_keys, "name": "mean",
+             "y": lam_means, "marker": {"color": "#636EFA"}},
+        ]
+        abl_section = """
+<h2>Ablations</h2>
+<p class="lead">Two knobs, swept with the same frozen protocol
+(scripts/ablations.py). Left: the entropic risk aversion λ — CVaR95
+improves up to λ ≈ 1 while the mean gives ground, the classic
+risk-return tradeoff. Right: the cost sweep — delta hedging wins in a
+near-frictionless world, the deep hedge takes over as costs rise
+(crossover ≈ 0.5%).</p>
+<div class="grid2">
+  <div class="panel"><div class="t">Entropic λ sweep (CVaR95 and mean,
+    1% costs)</div><div id="c-abl-lam" class="chart"></div></div>
+  <div class="panel"><div class="t">Cost sweep — CVaR95 by strategy
+    </div><div id="c-abl-cost" class="chart"></div></div>
+</div>
+"""
+        abl_lam_layout = dark_layout(xaxis={"title": "λ"},
+                                     yaxis={"title": "EUR per year"})
+        abl_cost_layout = dark_layout(
+            xaxis={"title": "cost rate"},
+            yaxis={"title": "CVaR95 (EUR/MWh per year)"},
+            margin={"t": 14, "r": 20, "b": 42, "l": 60})
+        abl_script = f"""
+plot('c-abl-lam', {json.dumps(abl_lam_trace)},
+     Object.assign({{height: 320}}, {json.dumps(abl_lam_layout)}));
+plot('c-abl-cost', {json.dumps(abl_cost_trace)},
+     Object.assign({{height: 320}}, {json.dumps(abl_cost_layout)}));
+"""
+    else:
+        abl_section = ""
+        abl_script = ""
+
     html = f"""<!doctype html>
 <html lang="en"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -548,6 +605,7 @@ assumption.</p>
 {walk_rows}</table>
 <div id="c-walkfwd" class="chart"></div>
 
+{abl_section}
 <footer><p class="caption">Generated {date.today().isoformat()} by
 scripts/make_site.py from benchmark run {run_dir.name} (reproduce:
 scripts/benchmark.py) and a seeded policy training run.
@@ -575,6 +633,7 @@ plot('c-walkfwd', {json.dumps(walkfwd_trace)},
                      xaxis={"tickangle": -15},
                      margin={"t": 14, "r": 20, "b": 70, "l": 60},
                      barmode="group"))}));
+{abl_script}
 {cv_script}
 </script>
 </body></html>

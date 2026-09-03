@@ -6,7 +6,7 @@ import math
 
 import torch
 
-from dhps.hedging.policy import DeepHedgeConfig, delta_baseline_metrics, train_deep_hedge
+from dhps.hedging.policy import DeepHedgeConfig, delta_baseline_metrics
 from dhps.hedging.simulator import (
     banded_positions,
     cvar,
@@ -74,12 +74,12 @@ def test_risk_measure_formulas():
     assert abs(float(entropic_risk(pnl, 1.0)) - expected) < 1e-12
 
 
-def test_policy_learns_and_beats_delta_under_costs():
+def test_policy_learns_and_beats_delta_under_costs(trained_policy):
     """The SP5 money gate: trained policy must beat weekly delta on CVaR95
     and entropic risk under the training cost regime, on shared eval paths."""
     cfg = DeepHedgeConfig(n_paths=16_384, n_steps=26, cost_rate=0.01,
                           epochs=150, seed=7, eval_paths=8_192)
-    res = train_deep_hedge(cfg)
+    res = trained_policy
     base = delta_baseline_metrics(cfg)
 
     assert res.history["train_risk"][-1] < res.history["train_risk"][0]

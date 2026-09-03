@@ -457,11 +457,12 @@ plot('c-heston-price', {json.dumps(cv_price_trace)},
         lam_means = [ablations["lambdas"][k]["policy"]["mean"]
                      for k in lam_keys]
         cost_keys = list(ablations["costs"])
+        cost_ticks = [f"{float(k) * 100:g}%" for k in cost_keys]
         abl_cost_trace = [
-            {"type": "bar", "x": cost_keys, "name": "deep hedge (policy)",
+            {"type": "bar", "x": cost_ticks, "name": "deep hedge (policy)",
              "y": [ablations["costs"][k]["policy"]["cvar95"] for k in
                    cost_keys], "marker": {"color": "#00CC96"}},
-            {"type": "bar", "x": cost_keys, "name": "delta (weekly)",
+            {"type": "bar", "x": cost_ticks, "name": "delta (weekly)",
              "y": [ablations["costs"][k]["delta"]["cvar95"] for k in
                    cost_keys], "marker": {"color": "#636EFA"}},
         ]
@@ -489,11 +490,14 @@ hedging within the horizon.</p>
     1% costs)</div><div id="c-abl-lam" class="chart"></div></div>
   <div class="panel"><div class="t">Cost sweep — CVaR95 by strategy
     </div><div id="c-abl-cost" class="chart"></div></div>
+</div>
 """
-        abl_lam_layout = dark_layout(xaxis={"title": "λ"},
+        # categorical x: even spacing per sweep grid point and plotly's edge
+        # padding, instead of a numeric axis that clips the first bar group
+        abl_lam_layout = dark_layout(xaxis={"title": "λ", "type": "category"},
                                      yaxis={"title": "EUR per year"})
         abl_cost_layout = dark_layout(
-            xaxis={"title": "cost rate"},
+            xaxis={"title": "cost rate", "type": "category"},
             yaxis={"title": "CVaR95 (EUR/MWh per year)"},
             margin={"t": 14, "r": 20, "b": 42, "l": 60})
         abl_extra_section = ""
@@ -510,7 +514,8 @@ hedging within the horizon.</p>
                  "marker": {"color": "#636EFA"}},
             ]
             abl_freq_layout = dark_layout(
-                xaxis={"title": "rebalance dates per year (m)"},
+                xaxis={"title": "rebalance dates per year (m)",
+                       "type": "category"},
                 yaxis={"title": "CVaR95"},
                 margin={"t": 14, "r": 20, "b": 42, "l": 60})
             abl_extra_section += """
@@ -524,6 +529,7 @@ hedging within the horizon.</p>
                 + json.dumps(abl_freq_layout) + ")); ")
         if feats:
             names = [w["window"].split(" (")[0] for w in feats["windows"]]
+            names = [n.capitalize() for n in names]
             abl_feat_trace = [
                 {"type": "bar", "x": names, "name": "base policy",
                  "y": [w["base_cvar"] for w in feats["windows"]],

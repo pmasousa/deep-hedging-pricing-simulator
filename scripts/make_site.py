@@ -34,7 +34,10 @@ except ImportError:  # site generation without the [ql] extra: skip section
 ROOT = Path(__file__).resolve().parents[1]
 OUT = ROOT / ".notes" / "site" / "index.html"
 
-STRATEGY_COLORS = {"no hedge": "#636EFA", "delta (weekly)": "#EF553B",
+# one color per strategy across every chart: no hedge = neutral gray,
+# delta = blue, policy = green
+STRATEGY_COLORS = {"no hedge": "#9ba1ad", "delta (weekly)": "#636EFA",
+                   "delta (var-aware)": "#636EFA",
                    "deep hedge (policy)": "#00CC96"}
 
 CSS = """
@@ -323,12 +326,9 @@ def main() -> None:
                for n in ("no hedge", "delta (weekly)",
                          "deep hedge (policy)")]
 
-    heston_hedge_colors = {"no hedge": "#9ba1ad",
-                           "delta (var-aware)": "#636EFA",
-                           "deep hedge (policy)": "#00CC96"}
     heston_hedge_trace = [
         {"type": "violin", "y": v["pnl"], "name": n,
-         "line": {"color": heston_hedge_colors[n]},
+         "line": {"color": STRATEGY_COLORS[n]},
          "box": {"visible": True}, "meanline": {"visible": True},
          "points": False} for n, v in heston_hedge.items()]
 
@@ -511,7 +511,8 @@ hedging within the horizon.</p>
             ]
             abl_freq_layout = dark_layout(
                 xaxis={"title": "rebalance dates per year (m)"},
-                yaxis={"title": "CVaR95"})
+                yaxis={"title": "CVaR95"},
+                margin={"t": 14, "r": 20, "b": 42, "l": 60})
             abl_extra_section += """
   <div class="panel"><div class="t">Rebalance frequency — CVaR95 (1%
     costs, frozen policy zero-shot)</div><div id="c-abl-freq"
@@ -534,9 +535,11 @@ hedging within the horizon.</p>
                  "y": [w["delta_cvar"] for w in feats["windows"]],
                  "marker": {"color": "#636EFA"}},
             ]
-            abl_feat_layout = dark_layout(yaxis={"title": "CVaR95"},
-                                          xaxis={"tickangle": -15},
-                                          barmode="group")
+            abl_feat_layout = dark_layout(
+                yaxis={"title": "CVaR95"},
+                xaxis={"tickangle": 0},
+                margin={"t": 14, "r": 20, "b": 42, "l": 60},
+                barmode="group")
             abl_extra_section += """
   <div class="panel"><div class="t">Feature ablation — base vs +trailing
     vol vs delta</div><div id="c-abl-feat" class="chart"></div></div>

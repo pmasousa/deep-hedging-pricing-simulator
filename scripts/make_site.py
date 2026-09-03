@@ -471,20 +471,24 @@ plot('c-heston-price', {json.dumps(cv_price_trace)},
             {"type": "bar", "x": lam_keys, "name": "mean",
              "y": lam_means, "marker": {"color": "#636EFA"}},
         ]
+        freq = ablations.get("frequency")
+        feats = ablations.get("features")
         abl_section = """
 <h2>Ablations</h2>
-<p class="lead">Two knobs, swept with the same frozen protocol
-(scripts/ablations.py). Left: the entropic risk aversion λ — CVaR95
-improves up to λ ≈ 1 while the mean gives ground, the classic
-risk-return tradeoff. Right: the cost sweep — delta hedging wins in a
-near-frictionless world, the deep hedge takes over as costs rise
-(crossover ≈ 0.5%).</p>
+<p class="lead">Four sweeps, one frozen protocol (scripts/ablations.py).
+Top left: the entropic risk aversion λ — CVaR95 improves up to
+λ ≈ 1 while the mean gives ground. Top right: the cost sweep — delta
+wins near zero cost, the deep hedge takes over above the ≈ 0.5%
+crossover. Bottom left: rebalance frequency — the policy beats weekly
+delta at every grid. Bottom right: the falsified hypothesis — adding a
+causal trailing-vol feature does NOT close the vol-shock loss; a
+no-lookahead vol estimate on a 26-date grid is too slow to inform
+hedging within the horizon.</p>
 <div class="grid2">
   <div class="panel"><div class="t">Entropic λ sweep (CVaR95 and mean,
     1% costs)</div><div id="c-abl-lam" class="chart"></div></div>
   <div class="panel"><div class="t">Cost sweep — CVaR95 by strategy
     </div><div id="c-abl-cost" class="chart"></div></div>
-</div>
 """
         abl_lam_layout = dark_layout(xaxis={"title": "λ"},
                                      yaxis={"title": "EUR per year"})
@@ -492,12 +496,64 @@ near-frictionless world, the deep hedge takes over as costs rise
             xaxis={"title": "cost rate"},
             yaxis={"title": "CVaR95 (EUR/MWh per year)"},
             margin={"t": 14, "r": 20, "b": 42, "l": 60})
+        abl_extra_section = ""
+        abl_extra_script = ""
+        if freq:
+            abl_freq_trace = [
+                {"type": "bar", "x": [str(r["m"]) for r in freq],
+                 "name": "deep hedge (policy)",
+                 "y": [r["policy_cvar"] for r in freq],
+                 "marker": {"color": "#00CC96"}},
+                {"type": "bar", "x": [str(r["m"]) for r in freq],
+                 "name": "delta (weekly)",
+                 "y": [r["delta_cvar"] for r in freq],
+                 "marker": {"color": "#636EFA"}},
+            ]
+            abl_freq_layout = dark_layout(
+                xaxis={"title": "rebalance dates per year (m)"},
+                yaxis={"title": "CVaR95"})
+            abl_extra_section += """
+  <div class="panel"><div class="t">Rebalance frequency — CVaR95 (1%
+    costs, frozen policy zero-shot)</div><div id="c-abl-freq"
+    class="chart"></div></div>
+"""
+            abl_extra_script += (
+                "plot('c-abl-freq', " + json.dumps(abl_freq_trace)
+                + ", Object.assign({height: 320}, "
+                + json.dumps(abl_freq_layout) + ")); ")
+        if feats:
+            names = [w["window"].split(" (")[0] for w in feats["windows"]]
+            abl_feat_trace = [
+                {"type": "bar", "x": names, "name": "base policy",
+                 "y": [w["base_cvar"] for w in feats["windows"]],
+                 "marker": {"color": "#00CC96"}},
+                {"type": "bar", "x": names, "name": "+ trailing vol",
+                 "y": [w["vol_cvar"] for w in feats["windows"]],
+                 "marker": {"color": "#EF553B"}},
+                {"type": "bar", "x": names, "name": "delta",
+                 "y": [w["delta_cvar"] for w in feats["windows"]],
+                 "marker": {"color": "#636EFA"}},
+            ]
+            abl_feat_layout = dark_layout(yaxis={"title": "CVaR95"},
+                                          xaxis={"tickangle": -15},
+                                          barmode="group")
+            abl_extra_section += """
+  <div class="panel"><div class="t">Feature ablation — base vs +trailing
+    vol vs delta</div><div id="c-abl-feat" class="chart"></div></div>
+"""
+            abl_extra_script += (
+                "plot('c-abl-feat', " + json.dumps(abl_feat_trace)
+                + ", Object.assign({height: 320}, "
+                + json.dumps(abl_feat_layout) + ")); ")
+        if abl_extra_section:
+            abl_section += ('<div class="grid2">'
+                            + abl_extra_section + "</div>")
         abl_script = f"""
 plot('c-abl-lam', {json.dumps(abl_lam_trace)},
      Object.assign({{height: 320}}, {json.dumps(abl_lam_layout)}));
 plot('c-abl-cost', {json.dumps(abl_cost_trace)},
      Object.assign({{height: 320}}, {json.dumps(abl_cost_layout)}));
-"""
+""" + abl_extra_script
     else:
         abl_section = ""
         abl_script = ""

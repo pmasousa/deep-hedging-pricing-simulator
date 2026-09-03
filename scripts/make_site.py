@@ -124,10 +124,10 @@ def overview_panels() -> dict[str, list]:
     gain = s_t <= be
     payoff_chart = [
         {"x": s_t[gain].tolist(), "y": profit[gain].tolist(), "mode": "none",
-         "fill": "tozeroy", "fillcolor": "rgba(0,204,150,0.25)",
+         "fill": "tozeroy", "fillcolor": "rgba(0,230,168,0.45)",
          "hoverinfo": "skip", "showlegend": False},
         {"x": s_t[~gain].tolist(), "y": profit[~gain].tolist(), "mode": "none",
-         "fill": "tozeroy", "fillcolor": "rgba(239,85,59,0.25)",
+         "fill": "tozeroy", "fillcolor": "rgba(239,85,59,0.30)",
          "hoverinfo": "skip", "showlegend": False},
         {"x": s_t.tolist(), "y": profit.tolist(), "mode": "lines",
          "line": {"color": "#fafafa"}, "name": "profit at expiry"},

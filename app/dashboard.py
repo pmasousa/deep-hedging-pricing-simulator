@@ -59,14 +59,14 @@ Pick a page above — every chart is computed live from this repo's library.
     )
     st.subheader("Benchmark status")
     cols = st.columns(4)
-    cols[0].metric("Pricer & Greeks", "3 independent routes",
+    cols[0].metric("Pricer & Greeks", "3 routes",
                    "agree to 1e-13", delta_color="off")
-    cols[1].metric("DML pricer", "price MAE 0.05",
+    cols[1].metric("DML pricer", "MAE 0.05",
                    "2.4x better than baseline", delta_color="off")
     cols[2].metric("Inference speed", "0.8 µs/price",
                    "~100,000x faster than MC", delta_color="off")
-    cols[3].metric("Deep hedging", "beats delta under costs",
-                   "CVaR95 -3.6 vs -4.2", delta_color="off")
+    cols[3].metric("Deep hedging", "CVaR95 -3.6",
+                   "vs -4.2 delta, 1% costs", delta_color="off")
     st.success(
         "Full-budget benchmark (100k samples, 300 epochs, price MAE 0.053): "
         "the network prices ~130,000x faster than Monte Carlo at matched "
@@ -108,7 +108,7 @@ Pick a page above — every chart is computed live from this repo's library.
         gain = s_t <= be
         fig.add_trace(go.Scatter(
             x=s_t[gain].tolist(), y=profit[gain].tolist(), mode="none",
-            fill="tozeroy", fillcolor="rgba(0,204,150,0.25)",
+            fill="tozeroy", fillcolor="rgba(0,230,168,0.45)",
             hoverinfo="skip", showlegend=False))
         fig.add_trace(go.Scatter(
             x=s_t[~gain].tolist(), y=profit[~gain].tolist(), mode="none",
@@ -451,7 +451,7 @@ def render_hedging() -> None:
     cost_pct = st.sidebar.slider("Transaction cost rate", 0.0, 2.0, 1.0, 0.25,
                                  format="%.2f%%")
     lambd = st.sidebar.select_slider(
-        "Risk aversion λ (entropic)", (0.25, 0.5, 1.0, 2.0, 4.0))
+        "Risk aversion λ (entropic)", (0.25, 0.5, 1.0, 2.0, 4.0), value=1.0)
     cost = cost_pct / 100.0
     data = _hedge_results(cost, lambd)
     names = list(data["pnl"])

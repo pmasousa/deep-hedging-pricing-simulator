@@ -18,8 +18,10 @@ import torch
 from matplotlib import cm
 
 from dhps.datasets.european import make_european_dataset
-from dhps.hedging.policy import DeepHedgeConfig, run_policy, train_deep_hedge  # noqa: F401
+from dhps.hedging.heston import evaluate_on_heston
+from dhps.hedging.policy import DeepHedgeConfig, train_deep_hedge
 from dhps.hedging.simulator import cvar, delta_positions, hedge_pnl, premium_bs
+from dhps.hedging.walk_forward import walk_forward_eval
 from dhps.pricing.black_scholes import bs_price
 from dhps.simulators.gbm import mc_european_price, simulate_gbm
 from dhps.simulators.heston import simulate_heston
@@ -225,38 +227,9 @@ def crossval_data() -> dict | None:
 
 
 def heston_hedging_data(policy, premium: float) -> dict:
-    """P&L per strategy on Heston paths: the GBM-trained policy evaluated
-    zero-shot, against a variance-aware BS delta (Black-Scholes delta
-    computed on the simulated variance path — the standard practitioner
-    baseline under stochastic volatility). Premium is the QuantLib Heston
-    price, the fair charge under these dynamics."""
-    paths, variances = simulate_heston(n_paths=16_384, n_steps=26, s0=100.0,
-                                       r=0.05, q=0.01, t_maturity=1.0,
-                                       antithetic=True, seed=11, **HESTON)
-    m = paths.shape[1] - 1
-    ttms_grid = (1.0 * (1.0 - torch.arange(m, dtype=paths.dtype) / m)
-                 ).repeat(paths.shape[0], 1)
-    vols = variances[:, :m].sqrt()
-    d1 = ((torch.log(paths[:, :m] / 100.0)
-           + (0.05 - 0.01 + 0.5 * vols.square()) * ttms_grid)
-          / (vols * ttms_grid.sqrt()))
-    normal = torch.distributions.Normal(
-        torch.zeros((), dtype=paths.dtype), torch.ones((), dtype=paths.dtype))
-    delta = normal.cdf(d1)
-
-    def pnl_of(pos: torch.Tensor) -> torch.Tensor:
-        return hedge_pnl(paths, 100.0, premium, pos, 0.01)
-
-    with torch.no_grad():
-        pos_policy = run_policy(policy, paths, 100.0, 1.0)
-    out = {}
-    for name, pnl in (("no hedge", pnl_of(torch.zeros_like(delta))),
-                      ("delta (var-aware)", pnl_of(delta)),
-                      ("deep hedge (policy)", pnl_of(pos_policy))):
-        out[name] = {"pnl": pnl.detach()[::4].tolist(),
-                     "mean": float(pnl.mean()), "std": float(pnl.std()),
-                     "cvar95": cvar(pnl)}
-    return out
+    """Delegates to the library: the same evaluation the test suite gates
+    (variance-aware delta with the dividend discount, QuantLib premium)."""
+    return evaluate_on_heston(policy, premium, include_pnl=True, **HESTON)
 
 
 def hedging_data() -> dict:
@@ -294,6 +267,21 @@ def main() -> None:
     hedging = hedging_data()
     cv = crossval_data()
     heston_hedge = heston_hedging_data(hedging["policy"], cv["ql_heston"])
+    walk_rows_data = walk_forward_eval(hedging["policy"])
+    walk_rows = "".join(
+        f"<tr><td>{r['window']}</td><td>{r['policy_cvar']:.2f}</td>"
+        f"<td>{r['delta_cvar']:.2f}</td>"
+        f"<td>{'+' if r['edge'] > 0 else ''}{r['edge']:.2f}</td></tr>"
+        for r in walk_rows_data)
+    walk_labels = [r["window"].split(" (")[0] for r in walk_rows_data]
+    walkfwd_trace = [
+        {"type": "bar", "x": walk_labels, "name": "policy CVaR95",
+         "y": [r["policy_cvar"] for r in walk_rows_data],
+         "marker": {"color": "#00CC96"}},
+        {"type": "bar", "x": walk_labels, "name": "delta CVaR95",
+         "y": [r["delta_cvar"] for r in walk_rows_data],
+         "marker": {"color": "#636EFA"}},
+    ]
     panels = overview_panels()
     png_b64 = base64.b64encode((run_dir / "greeks_curves.png").read_bytes())
 
@@ -547,6 +535,19 @@ dynamics. All numbers computed live; nothing tuned per strategy.</p>
 {hest_rows}</table>
 <div id="c-heston-hedge" class="chart"></div>
 
+<h3>Walk-forward: frozen policy, rolling windows</h3>
+<p class="lead">The trained policy is frozen (no retraining — that is what
+shipping means) and rolled across conditions it never saw. The delta
+baseline gets the same information it would have in production. The vol
+shock window is an honest loss: the policy's features (log-moneyness,
+time, position) do not carry the volatility regime, while the delta is
+handed the true σ — regime-awareness is future work, not a hidden
+assumption.</p>
+<table><tr><th>window</th><th>policy CVaR95</th><th>delta CVaR95</th>
+<th>edge</th></tr>
+{walk_rows}</table>
+<div id="c-walkfwd" class="chart"></div>
+
 <footer><p class="caption">Generated {date.today().isoformat()} by
 scripts/make_site.py from benchmark run {run_dir.name} (reproduce:
 scripts/benchmark.py) and a seeded policy training run.
@@ -568,6 +569,12 @@ plot('c-violins', {json.dumps(violins)},
      Object.assign({{height: 420}}, {json.dumps(violins_layout)}));
 plot('c-heston-hedge', {json.dumps(heston_hedge_trace)},
      Object.assign({{height: 420}}, {json.dumps(violins_layout)}));
+plot('c-walkfwd', {json.dumps(walkfwd_trace)},
+     Object.assign({{height: 340}}, {json.dumps(
+         dark_layout(yaxis={"title": "CVaR95 (higher is safer)"},
+                     xaxis={"tickangle": -15},
+                     margin={"t": 14, "r": 20, "b": 70, "l": 60},
+                     barmode="group"))}));
 {cv_script}
 </script>
 </body></html>

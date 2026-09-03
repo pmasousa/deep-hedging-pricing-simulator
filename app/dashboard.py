@@ -6,6 +6,7 @@ the autograd validation story. Run from the repo root:
 
 import math
 
+import pandas as pd
 import plotly.graph_objects as go
 import streamlit as st
 import torch
@@ -17,6 +18,7 @@ from dhps.bench.speed import mc_paths_for_error, payoff_std, price_one_option_mc
 from dhps.datasets.european import FEATURES, LABELS, make_european_dataset
 from dhps.hedging.policy import DeepHedgeConfig, train_deep_hedge
 from dhps.hedging.simulator import cvar, delta_positions, hedge_pnl, premium_bs
+from dhps.hedging.walk_forward import walk_forward_eval
 from dhps.pricing.aad import bs_greeks_ad
 from dhps.pricing.black_scholes import bs_greeks, bs_price
 from dhps.pricing.pathwise_mc import pathwise_european_greeks
@@ -431,6 +433,8 @@ def _hedge_results(cost: float) -> dict:
     out["volume"]["delta (weekly)"] = float(trades_d.abs().sum(1).mean())
     out["volume"]["deep hedge (policy)"] = res.metrics["traded_volume"]
     out["train_seconds"] = res.seconds
+    # cache misses only: keep the policy object for the walk-forward table
+    st.session_state["hedge_policy"] = res.policy
     return out
 
 
@@ -547,6 +551,23 @@ def render_hedging() -> None:
         "cost level. P&L is undiscounted — same simplification for every "
         "strategy."
     )
+
+    st.subheader("Walk-forward: frozen policy, rolling windows")
+    st.caption(
+        "The policy above is frozen and rolled across conditions it never "
+        "saw: the training regime, a volatility shock, and a structure "
+        "break (Heston). The vol shock is an honest loss — the policy's "
+        "features do not carry the volatility regime while the delta is "
+        "handed the true σ."
+    )
+    if "hedge_policy" in st.session_state:
+        rows = walk_forward_eval(st.session_state["hedge_policy"], cost)
+        st.table(pd.DataFrame([
+            {"window": r["window"],
+             "policy CVaR95": f"{r['policy_cvar']:.2f}",
+             "delta CVaR95": f"{r['delta_cvar']:.2f}",
+             "edge": f"{r['edge']:+.2f}"}
+            for r in rows]).set_index("window"))
 
 
 # -------------------------------------------------------------- validation --

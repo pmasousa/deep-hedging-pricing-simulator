@@ -668,7 +668,8 @@ def render_validation() -> None:
                     width=1.2)))
         fig.update_xaxes(title_text="time step")
         fig.update_yaxes(title_text="spot")
-        fig.update_layout(height=300, template=TEMPLATE)
+        fig.update_layout(height=300, template=TEMPLATE,
+                          margin=dict(l=10, r=10, t=10, b=10))
         st.plotly_chart(fig, width="stretch")
     with c2:
         fig = go.Figure()
@@ -683,7 +684,8 @@ def render_validation() -> None:
                       annotation_text="v₀ = 0.09")
         fig.update_xaxes(title_text="time step")
         fig.update_yaxes(title_text="variance")
-        fig.update_layout(height=300, template=TEMPLATE)
+        fig.update_layout(height=300, template=TEMPLATE,
+                          margin=dict(l=10, r=10, t=10, b=10))
         st.plotly_chart(fig, width="stretch")
     st.caption(
         "Right panel: instantaneous variance starts at v₀ = 0.09 and is "

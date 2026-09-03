@@ -18,7 +18,7 @@ import torch
 from matplotlib import cm
 
 from dhps.datasets.european import make_european_dataset
-from dhps.hedging.policy import DeepHedgeConfig, train_deep_hedge
+from dhps.hedging.policy import DeepHedgeConfig, run_policy, train_deep_hedge  # noqa: F401
 from dhps.hedging.simulator import cvar, delta_positions, hedge_pnl, premium_bs
 from dhps.pricing.black_scholes import bs_price
 from dhps.simulators.gbm import mc_european_price, simulate_gbm
@@ -224,6 +224,41 @@ def crossval_data() -> dict | None:
             "mc": mc, "se": se, "ql_heston": ql_heston}
 
 
+def heston_hedging_data(policy, premium: float) -> dict:
+    """P&L per strategy on Heston paths: the GBM-trained policy evaluated
+    zero-shot, against a variance-aware BS delta (Black-Scholes delta
+    computed on the simulated variance path — the standard practitioner
+    baseline under stochastic volatility). Premium is the QuantLib Heston
+    price, the fair charge under these dynamics."""
+    paths, variances = simulate_heston(n_paths=16_384, n_steps=26, s0=100.0,
+                                       r=0.05, q=0.01, t_maturity=1.0,
+                                       antithetic=True, seed=11, **HESTON)
+    m = paths.shape[1] - 1
+    ttms_grid = (1.0 * (1.0 - torch.arange(m, dtype=paths.dtype) / m)
+                 ).repeat(paths.shape[0], 1)
+    vols = variances[:, :m].sqrt()
+    d1 = ((torch.log(paths[:, :m] / 100.0)
+           + (0.05 - 0.01 + 0.5 * vols.square()) * ttms_grid)
+          / (vols * ttms_grid.sqrt()))
+    normal = torch.distributions.Normal(
+        torch.zeros((), dtype=paths.dtype), torch.ones((), dtype=paths.dtype))
+    delta = normal.cdf(d1)
+
+    def pnl_of(pos: torch.Tensor) -> torch.Tensor:
+        return hedge_pnl(paths, 100.0, premium, pos, 0.01)
+
+    with torch.no_grad():
+        pos_policy = run_policy(policy, paths, 100.0, 1.0)
+    out = {}
+    for name, pnl in (("no hedge", pnl_of(torch.zeros_like(delta))),
+                      ("delta (var-aware)", pnl_of(delta)),
+                      ("deep hedge (policy)", pnl_of(pos_policy))):
+        out[name] = {"pnl": pnl.detach()[::4].tolist(),
+                     "mean": float(pnl.mean()), "std": float(pnl.std()),
+                     "cvar95": cvar(pnl)}
+    return out
+
+
 def hedging_data() -> dict:
     cfg = DeepHedgeConfig(n_paths=16_384, n_steps=26, cost_rate=0.01,
                           epochs=150, seed=7, eval_paths=8_192)
@@ -248,6 +283,7 @@ def hedging_data() -> dict:
         out[name] = {"pnl": pnl[::4].tolist(),
                      "mean": float(pnl.mean()), "std": float(pnl.std()),
                      "cvar95": cvar(pnl)}
+    out["policy"] = res.policy
     return out
 
 
@@ -256,8 +292,9 @@ def main() -> None:
     acc = run["accuracy"]
     speed = run["speed"]
     hedging = hedging_data()
-    panels = overview_panels()
     cv = crossval_data()
+    heston_hedge = heston_hedging_data(hedging["policy"], cv["ql_heston"])
+    panels = overview_panels()
     png_b64 = base64.b64encode((run_dir / "greeks_curves.png").read_bytes())
 
     rows_acc = "".join(
@@ -280,12 +317,27 @@ def main() -> None:
 
     hed_rows = "".join(
         f"<tr><td>{n}</td><td>{v['mean']:+.2f}</td><td>{v['std']:.2f}</td>"
-        f"<td>{v['cvar95']:.2f}</td></tr>" for n, v in hedging.items())
+        f"<td>{v['cvar95']:.2f}</td></tr>" for n, v in hedging.items()
+        if n in ("no hedge", "delta (weekly)", "deep hedge (policy)"))
+    hest_rows = "".join(
+        f"<tr><td>{n}</td><td>{v['mean']:+.2f}</td><td>{v['std']:.2f}</td>"
+        f"<td>{v['cvar95']:.2f}</td></tr>" for n, v in heston_hedge.items())
 
-    violins = [{"type": "violin", "y": v["pnl"], "name": n,
+    violins = [{"type": "violin", "y": hedging[n]["pnl"], "name": n,
                 "line": {"color": STRATEGY_COLORS[n]},
                 "box": {"visible": True}, "meanline": {"visible": True},
-                "points": False} for n, v in hedging.items()]
+                "points": False}
+               for n in ("no hedge", "delta (weekly)",
+                         "deep hedge (policy)")]
+
+    heston_hedge_colors = {"no hedge": "#9ba1ad",
+                           "delta (var-aware)": "#636EFA",
+                           "deep hedge (policy)": "#00CC96"}
+    heston_hedge_trace = [
+        {"type": "violin", "y": v["pnl"], "name": n,
+         "line": {"color": heston_hedge_colors[n]},
+         "box": {"visible": True}, "meanline": {"visible": True},
+         "points": False} for n, v in heston_hedge.items()]
 
     def short_method(r: dict) -> str:
         kind = "MC" if r["method"].startswith("monte carlo") else "DML"
@@ -363,13 +415,14 @@ AnalyticHestonEngine.</p>
              "line": {"color": "#00CC96", "dash": "dash", "width": 2}},
             {"y": [cv["v0"]] * 65, "mode": "lines", "name": "v₀",
              "line": {"color": "#9ba1ad", "dash": "dot", "width": 1.5}}]
+        # forest plot: one quantity, two estimates — compare on a shared axis
         cv_price_trace = [
-            {"x": ["Monte Carlo (400k paths)"], "y": [cv["mc"]],
-             "error_y": {"type": "data", "array": [2 * cv["se"]],
+            {"x": [cv["mc"]], "y": ["Monte Carlo (400k paths)"],
+             "error_x": {"type": "data", "array": [2 * cv["se"]],
                          "visible": True}, "mode": "markers",
              "name": "Monte Carlo", "marker": {"color": "#636EFA",
                                                "size": 12}},
-            {"x": ["QuantLib analytic"], "y": [cv["ql_heston"]],
+            {"x": [cv["ql_heston"]], "y": ["QuantLib analytic"],
              "mode": "markers", "name": "QuantLib",
              "marker": {"color": "#00CC96", "size": 12,
                         "symbol": "diamond"}}]
@@ -377,14 +430,19 @@ AnalyticHestonEngine.</p>
                                         yaxis={"title": "value ($)"})
         cv_res_layout = dark_layout(
             xaxis={"title": "spot"},
-            yaxis={"type": "log", "title": "|difference|"})
+            yaxis={"type": "log", "title": "|difference|",
+                   "tickvals": [1e-16, 1e-14, 1e-12, 1e-10, 1e-8],
+                   "ticktext": ["1e-16", "1e-14", "1e-12", "1e-10",
+                                "1e-8"]})
         cv_fan_layout = dark_layout(xaxis={"title": "time step"},
                                     yaxis={"title": "spot"})
         cv_var_layout = dark_layout(xaxis={"title": "time step"},
                                     yaxis={"title": "variance"})
         cv_price_layout = dark_layout(
-            yaxis={"title": "ATM call price"},
-            margin={"t": 14, "r": 20, "b": 42, "l": 60})
+            xaxis={"title": "ATM call price ($) — bars overlap = agreement",
+                   "range": [cv["mc"] - 6 * cv["se"],
+                             max(cv["mc"], cv["ql_heston"]) + 6 * cv["se"]]},
+            margin={"t": 14, "r": 20, "b": 30, "l": 160})
         cv_script = f"""
 plot('c-cv-overlay', {json.dumps(cv_overlay_trace)},
      {json.dumps(cv_overlay_layout)});
@@ -393,7 +451,7 @@ plot('c-heston-fan', {json.dumps(cv['fan'])}, {json.dumps(cv_fan_layout)});
 plot('c-heston-var', {json.dumps(cv_var_trace)},
      {json.dumps(cv_var_layout)});
 plot('c-heston-price', {json.dumps(cv_price_trace)},
-     Object.assign({{height: 300}}, {json.dumps(cv_price_layout)}));
+     Object.assign({{height: 240}}, {json.dumps(cv_price_layout)}));
 """
     else:
         cv_section = ""
@@ -478,6 +536,17 @@ cost efficiency, not alpha.</p>
 {hed_rows}</table>
 <div id="c-violins" class="chart"></div>
 
+<h3>Same policy, stochastic volatility (Heston paths)</h3>
+<p class="lead">Robustness check: the policy above was trained on GBM paths,
+then evaluated zero-shot on Heston paths (stochastic volatility,
+ρ = −0.7) at the same 1% costs. The baseline is a variance-aware delta —
+Black-Scholes delta computed on the simulated variance path — and the
+premium is the QuantLib Heston price, the fair charge under these
+dynamics. All numbers computed live; nothing tuned per strategy.</p>
+<table><tr><th>strategy</th><th>mean</th><th>std</th><th>CVaR95</th></tr>
+{hest_rows}</table>
+<div id="c-heston-hedge" class="chart"></div>
+
 <footer><p class="caption">Generated {date.today().isoformat()} by
 scripts/make_site.py from benchmark run {run_dir.name} (reproduce:
 scripts/benchmark.py) and a seeded policy training run.
@@ -496,6 +565,8 @@ plot('c-sobol', {json.dumps(panels['sobol'])}, {json.dumps(sobol_layout)});
 plot('c-speed', {json.dumps(speed_trace)},
      Object.assign({{height: 420}}, {json.dumps(speed_layout)}));
 plot('c-violins', {json.dumps(violins)},
+     Object.assign({{height: 420}}, {json.dumps(violins_layout)}));
+plot('c-heston-hedge', {json.dumps(heston_hedge_trace)},
      Object.assign({{height: 420}}, {json.dumps(violins_layout)}));
 {cv_script}
 </script>

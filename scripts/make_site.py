@@ -439,10 +439,10 @@ AnalyticHestonEngine.</p>
         cv_var_layout = dark_layout(xaxis={"title": "time step"},
                                     yaxis={"title": "variance"})
         cv_price_layout = dark_layout(
-            xaxis={"title": "ATM call price ($) — bars overlap = agreement",
+            xaxis={"title": "ATM call price ($)",
                    "range": [cv["mc"] - 6 * cv["se"],
                              max(cv["mc"], cv["ql_heston"]) + 6 * cv["se"]]},
-            margin={"t": 14, "r": 20, "b": 30, "l": 160})
+            margin={"t": 14, "r": 20, "b": 52, "l": 160})
         cv_script = f"""
 plot('c-cv-overlay', {json.dumps(cv_overlay_trace)},
      {json.dumps(cv_overlay_layout)});

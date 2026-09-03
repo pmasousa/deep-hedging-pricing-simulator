@@ -1,7 +1,8 @@
 """Generate the static results site (index.html) for the gh-pages branch.
 
-Mirrors the dashboard's overview page: Streamlit's default light theme,
-the same four preview charts, then the benchmark tables and figures.
+Streamlit-dark theme mirroring the dashboard overview, the four preview
+charts, then the benchmark tables and figures, and a cross-validation
+section against QuantLib (skipped when the [ql] extra is not installed).
 Reads the newest reports/benchmarks/*/results.json, embeds the run's
 greeks_curves.png, and trains the hedging policy once for the P&L chart.
 Output is a single self-contained HTML file (plotly + fonts from CDN).
@@ -9,6 +10,7 @@ Output is a single self-contained HTML file (plotly + fonts from CDN).
 
 import base64
 import json
+import math
 from datetime import date
 from pathlib import Path
 
@@ -19,7 +21,13 @@ from dhps.datasets.european import make_european_dataset
 from dhps.hedging.policy import DeepHedgeConfig, train_deep_hedge
 from dhps.hedging.simulator import cvar, delta_positions, hedge_pnl, premium_bs
 from dhps.pricing.black_scholes import bs_price
-from dhps.simulators.gbm import simulate_gbm
+from dhps.simulators.gbm import mc_european_price, simulate_gbm
+from dhps.simulators.heston import simulate_heston
+
+try:
+    import QuantLib as ql  # noqa: N813 — the community alias
+except ImportError:  # site generation without the [ql] extra: skip section
+    ql = None
 
 ROOT = Path(__file__).resolve().parents[1]
 OUT = ROOT / ".notes" / "site" / "index.html"
@@ -153,6 +161,69 @@ def load_latest_run() -> tuple[dict, Path]:
     return json.loads((run_dir / "results.json").read_text()), run_dir
 
 
+HESTON = dict(v0=0.09, kappa=2.0, theta=0.04, xi=0.3, rho=-0.7)
+
+
+def crossval_data() -> dict | None:
+    """QuantLib cross-validation charts; None when QuantLib is absent."""
+    if ql is None:
+        return None
+    k, r, q, sig, t = 100.0, 0.05, 0.01, 0.2, 1.0
+    today = ql.Date.todaysDate()
+    expiry = today + ql.Period(365, ql.Days)
+    rf = ql.YieldTermStructureHandle(
+        ql.FlatForward(today, r, ql.Actual365Fixed(), ql.Continuous))
+    div = ql.YieldTermStructureHandle(
+        ql.FlatForward(today, q, ql.Actual365Fixed(), ql.Continuous))
+    vol_ts = ql.BlackVolTermStructureHandle(
+        ql.BlackConstantVol(today, ql.NullCalendar(), sig, ql.Actual365Fixed()))
+    option = ql.EuropeanOption(
+        ql.PlainVanillaPayoff(ql.Option.Call, k), ql.EuropeanExercise(expiry))
+
+    spots = torch.linspace(60.0, 150.0, 37, dtype=torch.float64)
+    ours = bs_price(spots, k, r, q, sig, t)
+    ql_prices = []
+    for s in spots.tolist():
+        process = ql.BlackScholesMertonProcess(
+            ql.QuoteHandle(ql.SimpleQuote(s)), div, rf, vol_ts)
+        option.setPricingEngine(ql.AnalyticEuropeanEngine(process))
+        ql_prices.append(option.NPV())
+    residuals = (ours - torch.tensor(ql_prices,
+                                     dtype=torch.float64)).abs().tolist()
+
+    h_process = ql.HestonProcess(
+        rf, div, ql.QuoteHandle(ql.SimpleQuote(100.0)), HESTON["v0"],
+        HESTON["kappa"], HESTON["theta"], HESTON["xi"], HESTON["rho"])
+    option.setPricingEngine(
+        ql.AnalyticHestonEngine(ql.HestonModel(h_process), 192))
+    ql_heston = option.NPV()
+
+    paths, variances = simulate_heston(n_paths=40, n_steps=64, s0=100.0,
+                                       r=r, q=q, t_maturity=t, seed=3,
+                                       antithetic=False, **HESTON)
+    mc_paths, _ = simulate_heston(n_paths=400_000, n_steps=128, s0=100.0,
+                                  r=r, q=q, t_maturity=t, seed=13, **HESTON)
+    mc = mc_european_price(mc_paths, strike=k, r=r, t_maturity=t)
+    payoff = torch.clamp(mc_paths[:, -1] - k, min=0.0)
+    se = math.exp(-r * t) * float(payoff.std(unbiased=True)) / math.sqrt(
+        mc_paths.shape[0])
+
+    fin = paths[:, -1]
+    lo, hi = float(fin.min()), float(fin.max())
+    fan = [{"y": paths[i].tolist(), "mode": "lines",
+            "line": {"color": viridis_rgb(
+                float((paths[i, -1] - lo) / (hi - lo))), "width": 1.2},
+            "hoverinfo": "skip", "showlegend": False}
+           for i in range(paths.shape[0])]
+    return {"spots": spots.tolist(), "ours": ours.tolist(),
+            "ql": ql_prices, "residuals": residuals,
+            "heston_max_res": max(residuals), "fan": fan,
+            "var_paths": [variances[i].tolist() for i in
+                          range(0, variances.shape[0], 4)],
+            "theta": HESTON["theta"], "v0": HESTON["v0"],
+            "mc": mc, "se": se, "ql_heston": ql_heston}
+
+
 def hedging_data() -> dict:
     cfg = DeepHedgeConfig(n_paths=16_384, n_steps=26, cost_rate=0.01,
                           epochs=150, seed=7, eval_paths=8_192)
@@ -186,6 +257,7 @@ def main() -> None:
     speed = run["speed"]
     hedging = hedging_data()
     panels = overview_panels()
+    cv = crossval_data()
     png_b64 = base64.b64encode((run_dir / "greeks_curves.png").read_bytes())
 
     rows_acc = "".join(
@@ -247,6 +319,85 @@ def main() -> None:
         margin={"t": 14, "r": 20, "b": 88, "l": 60})
     violins_layout = dark_layout(yaxis={"title": "P&L per year"},
                                  violingap=0.3)
+
+    if cv is not None:
+        cv_section = f"""
+<h2>Cross-validation vs QuantLib</h2>
+<p class="lead">QuantLib is an independent engine with zero shared code —
+a bug would have to exist in both libraries to slip through. Closed-form
+prices agree to {cv['heston_max_res']:.1e} across the spot grid; the
+Heston Monte Carlo lands inside a CLT band of QuantLib's analytic
+engine.</p>
+<div class="grid2">
+  <div class="panel"><div class="t">Closed form vs QuantLib — two engines,
+    one line</div><div id="c-cv-overlay" class="chart"></div></div>
+  <div class="panel"><div class="t">Residual |ours − QuantLib|</div>
+    <div id="c-cv-res" class="chart"></div></div>
+  <div class="panel"><div class="t">Heston paths — stochastic volatility,
+    correlation ρ = −0.7</div><div id="c-heston-fan" class="chart"></div>
+  </div>
+  <div class="panel"><div class="t">Variance mean reversion — v₀
+    {cv['v0']:.2f} pulled toward θ {cv['theta']:.2f}</div>
+    <div id="c-heston-var" class="chart"></div></div>
+</div>
+<p class="lead">Heston at-the-money call: our full-truncation Euler Monte
+Carlo (400k paths, ±2 standard errors) against QuantLib's
+AnalyticHestonEngine.</p>
+<div id="c-heston-price" class="chart"></div>
+"""
+        cv_overlay_trace = [
+            {"x": cv["spots"], "y": cv["ours"], "mode": "lines",
+             "name": "this repo", "line": {"color": "#636EFA", "width": 2}},
+            {"x": cv["spots"], "y": cv["ql"], "mode": "lines",
+             "name": "QuantLib", "line": {"color": "#00CC96", "width": 2,
+                                          "dash": "dash"}}]
+        cv_res_trace = [{"x": cv["spots"], "y": cv["residuals"],
+                         "mode": "lines", "showlegend": False,
+                         "line": {"color": "#EF553B", "width": 1.6}}]
+        cv_var_trace = [
+            {"y": p, "mode": "lines", "showlegend": False,
+             "line": {"color": "rgba(99,110,250,0.45)", "width": 1}}
+            for p in cv["var_paths"]]
+        cv_var_trace += [
+            {"y": [cv["theta"]] * 65, "mode": "lines", "name": "θ",
+             "line": {"color": "#00CC96", "dash": "dash", "width": 2}},
+            {"y": [cv["v0"]] * 65, "mode": "lines", "name": "v₀",
+             "line": {"color": "#9ba1ad", "dash": "dot", "width": 1.5}}]
+        cv_price_trace = [
+            {"x": ["Monte Carlo (400k paths)"], "y": [cv["mc"]],
+             "error_y": {"type": "data", "array": [2 * cv["se"]],
+                         "visible": True}, "mode": "markers",
+             "name": "Monte Carlo", "marker": {"color": "#636EFA",
+                                               "size": 12}},
+            {"x": ["QuantLib analytic"], "y": [cv["ql_heston"]],
+             "mode": "markers", "name": "QuantLib",
+             "marker": {"color": "#00CC96", "size": 12,
+                        "symbol": "diamond"}}]
+        cv_overlay_layout = dark_layout(xaxis={"title": "spot"},
+                                        yaxis={"title": "value ($)"})
+        cv_res_layout = dark_layout(
+            xaxis={"title": "spot"},
+            yaxis={"type": "log", "title": "|difference|"})
+        cv_fan_layout = dark_layout(xaxis={"title": "time step"},
+                                    yaxis={"title": "spot"})
+        cv_var_layout = dark_layout(xaxis={"title": "time step"},
+                                    yaxis={"title": "variance"})
+        cv_price_layout = dark_layout(
+            yaxis={"title": "ATM call price"},
+            margin={"t": 14, "r": 20, "b": 42, "l": 60})
+        cv_script = f"""
+plot('c-cv-overlay', {json.dumps(cv_overlay_trace)},
+     {json.dumps(cv_overlay_layout)});
+plot('c-cv-res', {json.dumps(cv_res_trace)}, {json.dumps(cv_res_layout)});
+plot('c-heston-fan', {json.dumps(cv['fan'])}, {json.dumps(cv_fan_layout)});
+plot('c-heston-var', {json.dumps(cv_var_trace)},
+     {json.dumps(cv_var_layout)});
+plot('c-heston-price', {json.dumps(cv_price_trace)},
+     Object.assign({{height: 300}}, {json.dumps(cv_price_layout)}));
+"""
+    else:
+        cv_section = ""
+        cv_script = ""
 
     html = f"""<!doctype html>
 <html lang="en"><head><meta charset="utf-8">
@@ -317,6 +468,7 @@ network.</p>
 <img class="curve" alt="delta and gamma curves vs analytic"
      src="data:image/png;base64,{png_b64.decode()}">
 
+{cv_section}
 <h3>Deep hedging under 1% transaction costs</h3>
 <p class="lead">Short one at-the-money call, stock traded at 26 dates. The
 policy network is trained on entropic risk of hedging P&amp;L. A fairly
@@ -345,6 +497,7 @@ plot('c-speed', {json.dumps(speed_trace)},
      Object.assign({{height: 420}}, {json.dumps(speed_layout)}));
 plot('c-violins', {json.dumps(violins)},
      Object.assign({{height: 420}}, {json.dumps(violins_layout)}));
+{cv_script}
 </script>
 </body></html>
 """

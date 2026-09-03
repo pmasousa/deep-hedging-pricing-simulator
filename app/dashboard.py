@@ -21,6 +21,7 @@ from dhps.pricing.aad import bs_greeks_ad
 from dhps.pricing.black_scholes import bs_greeks, bs_price
 from dhps.pricing.pathwise_mc import pathwise_european_greeks
 from dhps.simulators.gbm import simulate_gbm
+from dhps.simulators.heston import simulate_heston
 from dhps.train.trainer import TrainConfig, train_model
 
 st.set_page_config(page_title="DHPS — Pricing & Differential ML", layout="wide")
@@ -611,6 +612,65 @@ def render_validation() -> None:
     fig.update_yaxes(title_text="delta")
     fig.update_layout(height=480, template=TEMPLATE)
     st.plotly_chart(fig, width="stretch")
+
+    st.subheader("Heston & QuantLib cross-validation")
+    st.markdown(
+        "Stochastic volatility (Heston), full-truncation Euler: the variance "
+        "state evolves freely while coefficients use max(v, 0). QuantLib is "
+        "an independent engine with zero shared code — the gates in the test "
+        "suite pin our pricers to it."
+    )
+
+    @st.cache_data(show_spinner=False)
+    def _heston_paths():
+        spots, variances = simulate_heston(n_paths=40, n_steps=64, s0=100.0,
+                                           r=0.05, q=0.01, t_maturity=1.0,
+                                           antithetic=False, seed=3,
+                                           v0=0.09, kappa=2.0, theta=0.04,
+                                           xi=0.3, rho=-0.7)
+        return spots, variances
+
+    spots_h, var_h = _heston_paths()
+    c1, c2 = st.columns(2)
+    with c1:
+        fin = spots_h[:, -1]
+        lo, hi = float(fin.min()), float(fin.max())
+        fig = go.Figure()
+        for i in range(spots_h.shape[0]):
+            fig.add_trace(go.Scatter(
+                y=spots_h[i].tolist(), mode="lines", hoverinfo="skip",
+                showlegend=False,
+                line=dict(color=sample_colorscale(
+                    "Viridis", [float((spots_h[i, -1] - lo) / (hi - lo))])[0],
+                    width=1.2)))
+        fig.update_xaxes(title_text="time step")
+        fig.update_yaxes(title_text="spot")
+        fig.update_layout(height=300, template=TEMPLATE)
+        st.plotly_chart(fig, width="stretch")
+    with c2:
+        fig = go.Figure()
+        for i in range(0, var_h.shape[0], 4):
+            fig.add_trace(go.Scatter(
+                y=var_h[i].tolist(), mode="lines", hoverinfo="skip",
+                showlegend=False,
+                line=dict(color="rgba(99,110,250,0.45)", width=1)))
+        fig.add_hline(y=0.04, line_dash="dash", line_color="#00CC96",
+                      annotation_text="θ = 0.04")
+        fig.add_hline(y=0.09, line_dash="dot", line_color="gray",
+                      annotation_text="v₀ = 0.09")
+        fig.update_xaxes(title_text="time step")
+        fig.update_yaxes(title_text="variance")
+        fig.update_layout(height=300, template=TEMPLATE)
+        st.plotly_chart(fig, width="stretch")
+    st.caption(
+        "Right panel: instantaneous variance starts at v₀ = 0.09 and is "
+        "pulled toward the long-run level θ = 0.04 — that pull is what "
+        "makes this a mean-reverting volatility model, not constant-vol "
+        "GBM. In the test suite: E[v_T] matches θ + (v₀−θ)e^(−κT) within "
+        "CLT bands, E[S_T] is an exact martingale under the scheme, and "
+        "prices cross-check against QuantLib's AnalyticHestonEngine "
+        "(requires the optional [ql] extra)."
+    )
 
     st.info(
         "**Why no Monte Carlo gamma?** The call payoff has a kink at the "

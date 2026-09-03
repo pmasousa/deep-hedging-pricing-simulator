@@ -168,19 +168,28 @@ assumption.</p>
 
 
 <h2>Ablations</h2>
-<p class="lead">Two knobs, swept with the same frozen protocol
-(scripts/ablations.py). Left: the entropic risk aversion λ — CVaR95
-improves up to λ ≈ 1 while the mean gives ground, the classic
-risk-return tradeoff. Right: the cost sweep — delta hedging wins in a
-near-frictionless world, the deep hedge takes over as costs rise
-(crossover ≈ 0.5%).</p>
+<p class="lead">Four sweeps, one frozen protocol (scripts/ablations.py).
+Top left: the entropic risk aversion λ — CVaR95 improves up to
+λ ≈ 1 while the mean gives ground. Top right: the cost sweep — delta
+wins near zero cost, the deep hedge takes over above the ≈ 0.5%
+crossover. Bottom left: rebalance frequency — the policy beats weekly
+delta at every grid. Bottom right: the falsified hypothesis — adding a
+causal trailing-vol feature does NOT close the vol-shock loss; a
+no-lookahead vol estimate on a 26-date grid is too slow to inform
+hedging within the horizon.</p>
 <div class="grid2">
   <div class="panel"><div class="t">Entropic λ sweep (CVaR95 and mean,
     1% costs)</div><div id="c-abl-lam" class="chart"></div></div>
   <div class="panel"><div class="t">Cost sweep — CVaR95 by strategy
     </div><div id="c-abl-cost" class="chart"></div></div>
-</div>
+<div class="grid2">
+  <div class="panel"><div class="t">Rebalance frequency — CVaR95 (1%
+    costs, frozen policy zero-shot)</div><div id="c-abl-freq"
+    class="chart"></div></div>
 
+  <div class="panel"><div class="t">Feature ablation — base vs +trailing
+    vol vs delta</div><div id="c-abl-feat" class="chart"></div></div>
+</div>
 <footer><p class="caption">Generated 2026-09-03 by
 scripts/make_site.py from benchmark run 20260831-203517 (reproduce:
 scripts/benchmark.py) and a seeded policy training run.
@@ -209,7 +218,7 @@ plot('c-abl-lam', [{"type": "bar", "x": ["0.25", "0.5", "1.0", "2.0", "4.0"], "n
      Object.assign({height: 320}, {"font": {"family": "'Source Sans 3', 'Segoe UI', sans-serif", "color": "#fafafa", "size": 13}, "paper_bgcolor": "rgba(0,0,0,0)", "plot_bgcolor": "rgba(0,0,0,0)", "margin": {"t": 14, "r": 14, "b": 42, "l": 50}, "xaxis": {"title": "\u03bb"}, "yaxis": {"title": "EUR per year"}, "legend": {"orientation": "h", "y": 1.18, "x": 0, "bgcolor": "rgba(0,0,0,0)"}}));
 plot('c-abl-cost', [{"type": "bar", "x": ["0.0", "0.0025", "0.005", "0.01", "0.02"], "name": "deep hedge (policy)", "y": [-1.6718789641408693, -2.2345347707729415, -2.7600255977902663, -3.7464083974234272, -5.513540377612741], "marker": {"color": "#00CC96"}}, {"type": "bar", "x": ["0.0", "0.0025", "0.005", "0.01", "0.02"], "name": "delta (weekly)", "y": [-1.39976130251441, -2.071144122366096, -2.7723045312274626, -4.237353412048408, -7.293030928540804], "marker": {"color": "#636EFA"}}],
      Object.assign({height: 320}, {"font": {"family": "'Source Sans 3', 'Segoe UI', sans-serif", "color": "#fafafa", "size": 13}, "paper_bgcolor": "rgba(0,0,0,0)", "plot_bgcolor": "rgba(0,0,0,0)", "margin": {"t": 14, "r": 20, "b": 42, "l": 60}, "xaxis": {"title": "cost rate"}, "yaxis": {"title": "CVaR95 (EUR/MWh per year)"}, "legend": {"orientation": "h", "y": 1.18, "x": 0, "bgcolor": "rgba(0,0,0,0)"}}));
-
+plot('c-abl-freq', [{"type": "bar", "x": ["8", "13", "26", "52", "104"], "name": "deep hedge (policy)", "y": [-5.029465773655951, -4.273920559596485, -3.67918637498552, -3.635523744502726, -4.043462858984068], "marker": {"color": "#00CC96"}}, {"type": "bar", "x": ["8", "13", "26", "52", "104"], "name": "delta (weekly)", "y": [-5.548193099268921, -4.769413937761559, -4.316244780623441, -4.401143519515574, -5.347177433960569], "marker": {"color": "#636EFA"}}], Object.assign({height: 320}, {"font": {"family": "'Source Sans 3', 'Segoe UI', sans-serif", "color": "#fafafa", "size": 13}, "paper_bgcolor": "rgba(0,0,0,0)", "plot_bgcolor": "rgba(0,0,0,0)", "margin": {"t": 14, "r": 14, "b": 42, "l": 50}, "xaxis": {"title": "rebalance dates per year (m)"}, "yaxis": {"title": "CVaR95"}, "legend": {"orientation": "h", "y": 1.18, "x": 0, "bgcolor": "rgba(0,0,0,0)"}})); plot('c-abl-feat', [{"type": "bar", "x": ["training regime", "vol shock", "Heston"], "name": "base policy", "y": [-3.6694965327052063, -6.505370994179581, -6.390509523701155], "marker": {"color": "#00CC96"}}, {"type": "bar", "x": ["training regime", "vol shock", "Heston"], "name": "+ trailing vol", "y": [-3.4904823832382696, -6.785683145869055, -6.5210247116129105], "marker": {"color": "#EF553B"}}, {"type": "bar", "x": ["training regime", "vol shock", "Heston"], "name": "delta", "y": [-4.174544367980587, -5.769997517757111, -6.516296248290369], "marker": {"color": "#636EFA"}}], Object.assign({height: 320}, {"font": {"family": "'Source Sans 3', 'Segoe UI', sans-serif", "color": "#fafafa", "size": 13}, "paper_bgcolor": "rgba(0,0,0,0)", "plot_bgcolor": "rgba(0,0,0,0)", "margin": {"t": 14, "r": 14, "b": 42, "l": 50}, "xaxis": {"tickangle": -15}, "yaxis": {"title": "CVaR95"}, "legend": {"orientation": "h", "y": 1.18, "x": 0, "bgcolor": "rgba(0,0,0,0)"}, "barmode": "group"})); 
 
 plot('c-cv-overlay', [{"x": [60.0, 62.5, 65.0, 67.5, 70.0, 72.5, 75.0, 77.5, 80.0, 82.5, 85.0, 87.5, 90.0, 92.5, 95.0, 97.5, 100.0, 102.5, 105.0, 107.5, 110.0, 112.5, 115.0, 117.5, 120.0, 122.5, 125.0, 127.5, 130.0, 132.5, 135.0, 137.5, 140.0, 142.5, 145.0, 147.5, 150.0], "y": [0.04672825666846658, 0.08600962919534916, 0.1496079969293349, 0.24740723178470825, 0.39102403659380336, 0.5933838514932246, 0.8681242550328445, 1.2288906554900372, 1.6886026397138885, 2.2587688296068187, 2.9489156171653477, 3.7661748362142617, 4.715052031489261, 5.797374734314978, 7.012402070760807, 8.357064699262658, 9.826297782739111, 11.413428761952062, 13.110584866552593, 14.909091136182084, 16.799836863043538, 18.773595692415384, 20.821291328835642, 22.934206409981712, 25.104136415826858, 27.32349347098605, 29.585366702894603, 31.88354664203203, 34.21252122400787, 36.56745050135618, 38.94412639251817, 41.33892284684903, 43.74874080842898, 46.17095140228929, 48.60333989752864, 51.04405225108901, 53.491545413764726], "mode": "lines", "name": "this repo", "line": {"color": "#636EFA", "width": 2}}, {"x": [60.0, 62.5, 65.0, 67.5, 70.0, 72.5, 75.0, 77.5, 80.0, 82.5, 85.0, 87.5, 90.0, 92.5, 95.0, 97.5, 100.0, 102.5, 105.0, 107.5, 110.0, 112.5, 115.0, 117.5, 120.0, 122.5, 125.0, 127.5, 130.0, 132.5, 135.0, 137.5, 140.0, 142.5, 145.0, 147.5, 150.0], "y": [0.04672825666847009, 0.08600962919534934, 0.14960799692933485, 0.2474072317847086, 0.39102403659380663, 0.5933838514932268, 0.8681242550328457, 1.2288906554900412, 1.6886026397138936, 2.2587688296068253, 2.94891561716535, 3.766174836214261, 4.715052031489262, 5.797374734314981, 7.012402070760819, 8.357064699262661, 9.826297782739136, 11.413428761952073, 13.110584866552609, 14.909091136182104, 16.79983686304354, 18.77359569241539, 20.821291328835663, 22.934206409981737, 25.104136415826865, 27.323493470986076, 29.58536670289461, 31.88354664203205, 34.21252122400788, 36.56745050135621, 38.94412639251818, 41.338922846849044, 43.748740808429, 46.170951402289326, 48.60333989752866, 51.044052251089, 53.49154541376473], "mode": "lines", "name": "QuantLib", "line": {"color": "#00CC96", "width": 2, "dash": "dash"}}],
      {"font": {"family": "'Source Sans 3', 'Segoe UI', sans-serif", "color": "#fafafa", "size": 13}, "paper_bgcolor": "rgba(0,0,0,0)", "plot_bgcolor": "rgba(0,0,0,0)", "margin": {"t": 14, "r": 14, "b": 42, "l": 50}, "xaxis": {"title": "spot"}, "yaxis": {"title": "value ($)"}, "legend": {"orientation": "h", "y": 1.18, "x": 0, "bgcolor": "rgba(0,0,0,0)"}});

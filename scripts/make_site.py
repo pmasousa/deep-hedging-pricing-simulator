@@ -577,9 +577,10 @@ plot('c-abl-cost', {json.dumps(abl_cost_trace)},
             f"<td>{row['p99_us'] / 1000:.1f} ms</td></tr>"
             for name, row in lat["endpoints"].items())
         api_section = f"""
-<h2>Served over HTTP</h2>
-<p class="lead">The frozen learners behind FastAPI endpoints — pricing and
-hedging at service latency. Requests outside the training box get a 422:
+<h2>API latency</h2>
+<p class="lead">The same frozen learners ship behind FastAPI endpoints — run
+from the repo or the CPU Docker image; nothing is deployed here. Measured
+single-request latency: requests outside the training box get a 422,
 out-of-distribution error is measured, not clamped.</p>
 <table><tr><th>endpoint</th><th>p50</th><th>p99</th></tr>{rows_lat}</table>
 <p class="caption">Matched-error Monte Carlo: {lat['mc_us_per_price']:,.0f} µs

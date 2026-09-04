@@ -79,6 +79,9 @@ td { border-bottom: 1px solid #363b45; }
 img.curve { width: 100%; max-width: 52rem; border: 1px solid #363b45;
             border-radius: 8px; background: #ffffff; padding: 10px;
             box-sizing: border-box; }
+pre.cmd { background: #1a1c23; border: 1px solid #363b45; border-radius: 8px;
+          padding: 10px 14px; font-size: 0.85rem; overflow-x: auto;
+          max-width: 52rem; margin: 10px 0; }
 footer { margin-top: 48px; border-top: 1px solid #363b45; padding-top: 12px; }
 @media (max-width: 800px) { .metrics { grid-template-columns: 1fr 1fr; }
                             .grid2 { grid-template-columns: 1fr; } }
@@ -567,6 +570,35 @@ plot('c-abl-cost', {json.dumps(abl_cost_trace)},
         abl_section = ""
         abl_script = ""
 
+    # api latency artifact from scripts/benchmark_api.py; the site degrades
+    # gracefully when the benchmark hasn't been run
+    lat_path = ROOT / "reports" / "api" / "latency-full.json"
+    lat = json.loads(lat_path.read_text()) if lat_path.exists() else None
+    if lat is not None:
+        rows_lat = "".join(
+            f"<tr><td>POST /{name}</td><td>{row['p50_us'] / 1000:.1f} ms</td>"
+            f"<td>{row['p99_us'] / 1000:.1f} ms</td></tr>"
+            for name, row in lat["endpoints"].items())
+        api_section = f"""
+<h2>Served over HTTP</h2>
+<p class="lead">The frozen learners behind FastAPI endpoints — pricing and
+hedging at service latency. Requests outside the training box get a 422:
+out-of-distribution error is measured, not clamped.</p>
+<table><tr><th>endpoint</th><th>p50</th><th>p99</th></tr>{rows_lat}</table>
+<p class="caption">Matched-error Monte Carlo: {lat['mc_us_per_price']:,.0f} µs
+per price ({lat['mc_paths']:,} paths at the served model's price MAE
+{lat['price_mae']:.4f}) — /price is {lat['speedup_vs_mc']['p50']:,.0f}x faster
+at p50, {lat['speedup_vs_mc']['p99']:,.0f}x at p99 (design gate: 10x).
+{lat['host']}, in-process ASGI; reproduce: scripts/benchmark_api.py.</p>
+<pre class="cmd">uv run --extra api uvicorn dhps.api.app:app --port 8000
+curl -s localhost:8000/price -H 'content-type: application/json' \\
+  -d '{{"spot": 100, "strike": 100, "t_maturity": 1.0, "sigma": 0.2}}'
+
+docker build -t dhps-api . &amp;&amp; docker run -p 8000:8000 dhps-api</pre>
+"""
+    else:
+        api_section = ""
+
     html = f"""<!doctype html>
 <html lang="en"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -671,6 +703,7 @@ assumption.</p>
 <div id="c-walkfwd" class="chart"></div>
 
 {abl_section}
+{api_section}
 <footer><p class="caption">Generated {date.today().isoformat()} by
 scripts/make_site.py from benchmark run {run_dir.name} (reproduce:
 scripts/benchmark.py) and a seeded policy training run.

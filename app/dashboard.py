@@ -16,7 +16,7 @@ from plotly.subplots import make_subplots
 from dhps.bench.evaluate import evaluate_learner, greeks_curve, ood_metrics
 from dhps.bench.speed import mc_paths_for_error, payoff_std, price_one_option_mc, time_fn
 from dhps.datasets.european import FEATURES, LABELS, make_european_dataset
-from dhps.hedging.policy import DeepHedgeConfig, train_deep_hedge
+from dhps.hedging.policy import DeepHedgeConfig, HedgePolicy, train_deep_hedge
 from dhps.hedging.simulator import cvar, delta_positions, hedge_pnl, premium_bs
 from dhps.hedging.walk_forward import walk_forward_eval
 from dhps.pricing.aad import bs_greeks_ad
@@ -405,7 +405,8 @@ def render_model() -> None:
 @st.cache_data(show_spinner="Training the deep-hedging policy (~20 s)...")
 def _hedge_results(cost: float, lambd: float) -> dict:
     """Train the policy at this cost level and score every strategy on the
-    SAME eval paths. Returns plain floats/lists for caching."""
+    SAME eval paths. Returns plain floats/lists for caching; the policy
+    rides along as a state dict (plain tensors)."""
     cfg = DeepHedgeConfig(n_paths=8_192, n_steps=26, cost_rate=cost,
                           lambd=lambd, epochs=80, seed=7, eval_paths=4_096)
     res = train_deep_hedge(cfg)
@@ -433,8 +434,10 @@ def _hedge_results(cost: float, lambd: float) -> dict:
     out["volume"]["delta (weekly)"] = float(trades_d.abs().sum(1).mean())
     out["volume"]["deep hedge (policy)"] = res.metrics["traded_volume"]
     out["train_seconds"] = res.seconds
-    # cache misses only: keep the policy object for the walk-forward table
-    st.session_state["hedge_policy"] = res.policy
+    # a session_state write inside cache_data only fires on cache misses,
+    # which made the walk-forward table vanish on warm sessions — the
+    # policy travels in the payload instead
+    out["policy_state"] = res.policy.state_dict()
     return out
 
 
@@ -479,7 +482,9 @@ def render_hedging() -> None:
         "from +10 to −50."
     )
 
-    colors = {"no hedge": "#636EFA", "delta (weekly)": "#EF553B",
+    # one color per strategy across every chart, mirroring the static site:
+    # no hedge = neutral gray, delta = blue, policy = green
+    colors = {"no hedge": "#9ba1ad", "delta (weekly)": "#636EFA",
               "deep hedge (policy)": "#00CC96"}
     fig = go.Figure()
     for name in names:
@@ -562,8 +567,10 @@ def render_hedging() -> None:
         "features do not carry the volatility regime while the delta is "
         "handed the true σ."
     )
-    if "hedge_policy" in st.session_state:
-        rows = walk_forward_eval(st.session_state["hedge_policy"], cost)
+    if "policy_state" in data:
+        policy = HedgePolicy()
+        policy.load_state_dict(data["policy_state"])
+        rows = walk_forward_eval(policy, cost)
         st.table(pd.DataFrame([
             {"window": r["window"],
              "policy CVaR95": f"{r['policy_cvar']:.2f}",

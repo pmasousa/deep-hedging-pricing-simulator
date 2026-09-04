@@ -50,6 +50,38 @@ beats weekly delta hedging on CVaR95 (−3.57 vs −4.24 at 1% costs) with
 less traded volume. A fairly priced book has zero expected P&L by
 construction; the improvement is cost efficiency, not alpha.
 
+## HTTP API
+
+The same frozen learners behind three endpoints (`src/dhps/api/`):
+
+| endpoint | input | output |
+|---|---|---|
+| `POST /price` | spot, strike, T, σ | learned call price |
+| `POST /greeks` | spot, strike, T, σ | delta, gamma, vega, theta, dual delta — autograd through the net |
+| `POST /hedge` | spot, strike, τ, position | target stock position in [0, 1] |
+| `GET /meta` | — | budgets, served metrics, valid input box |
+
+Requests outside the training box return 422 — out-of-distribution error
+is measured, not clamped. Rates r = 0.05, q = 0.01 are dataset constants,
+disclosed by `/meta`.
+
+```bash
+uv run --extra api uvicorn dhps.api.app:app --port 8000
+```
+
+Single-request latency at matched Monte Carlo error (CPU, in-process,
+Windows 11; reproduce with `scripts/benchmark_api.py`): `/price` p50
+2.1 ms against 141 ms per matched-error MC price — 67x at p50, 21x at
+p99, versus the 10x design gate.
+
+Docker builds a CPU image that trains the full-budget learners at build
+time, so the container starts warm:
+
+```bash
+docker build -t dhps-api .
+docker run -p 8000:8000 dhps-api
+```
+
 ## Quickstart
 
 ```bash
@@ -61,6 +93,9 @@ uv run pytest -q
 
 # dashboard
 uv run --extra app streamlit run app/dashboard.py
+
+# http api over the trained learners
+uv run --extra api uvicorn dhps.api.app:app --port 8000
 
 # train a learner
 uv run python scripts/train.py --dml --epochs 300
@@ -80,8 +115,9 @@ src/dhps/
   train/        training loop, run folders
   bench/        accuracy/OOD metrics, Greeks curves, matched-error speed
   hedging/      cost-aware P&L simulator, deep hedging policy
+  api/          FastAPI service over the frozen learners
 app/            Streamlit dashboard
-scripts/        train.py, benchmark.py
+scripts/        train, benchmark, ablations, api latency, site
 tests/          statistical and regression gates
 ```
 

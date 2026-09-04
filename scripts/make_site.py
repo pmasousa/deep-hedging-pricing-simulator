@@ -79,9 +79,6 @@ td { border-bottom: 1px solid #363b45; }
 img.curve { width: 100%; max-width: 52rem; border: 1px solid #363b45;
             border-radius: 8px; background: #ffffff; padding: 10px;
             box-sizing: border-box; }
-pre.cmd { background: #1a1c23; border: 1px solid #363b45; border-radius: 8px;
-          padding: 10px 14px; font-size: 0.85rem; overflow-x: auto;
-          max-width: 52rem; margin: 10px 0; }
 footer { margin-top: 48px; border-top: 1px solid #363b45; padding-top: 12px; }
 @media (max-width: 800px) { .metrics { grid-template-columns: 1fr 1fr; }
                             .grid2 { grid-template-columns: 1fr; } }
@@ -589,12 +586,8 @@ out-of-distribution error is measured, not clamped.</p>
 per price ({lat['mc_paths']:,} paths at the served model's price MAE
 {lat['price_mae']:.4f}) — /price is {lat['speedup_vs_mc']['p50']:,.0f}x faster
 at p50, {lat['speedup_vs_mc']['p99']:,.0f}x at p99 (design gate: 10x).
-{lat['host']}, in-process ASGI; reproduce: scripts/benchmark_api.py.</p>
-<pre class="cmd">uv run --extra api uvicorn dhps.api.app:app --port 8000
-curl -s localhost:8000/price -H 'content-type: application/json' \\
-  -d '{{"spot": 100, "strike": 100, "t_maturity": 1.0, "sigma": 0.2}}'
-
-docker build -t dhps-api . &amp;&amp; docker run -p 8000:8000 dhps-api</pre>
+{lat['host']}, in-process ASGI; reproduce: scripts/benchmark_api.py.
+Serve it and build the image: see the README.</p>
 """
     else:
         api_section = ""

@@ -20,7 +20,8 @@ hedging policy under transaction costs (Buehler et al., 2019).
 
 Autograd matches the formulas to 1e-10; the Monte Carlo estimators fall
 inside CLT bands around them. The three routes share no code, so a bug has
-to appear in all three to pass.
+to appear in all three to pass. Gates: `tests/test_aad.py`,
+`tests/test_pathwise.py`, `tests/test_black_scholes.py`.
 
 ## Results
 
@@ -42,6 +43,16 @@ standard error needs to match the learner's price accuracy (73,544 paths).
 | cpu | DML, batched 100k options | 0.79 |
 | cuda | DML, batched 100k options | 0.0039 |
 
+Methodology and hardware: timings from an 8-core/16-thread AMD Zen 2 CPU
+and an RTX 5070 (CUDA 12.8 build), PyTorch float64, seeded runs;
+`dhps.bench.speed.time_fn` times batched forward passes (median of
+repeats), Monte Carlo at its CLT-matched path count. The hedging numbers
+below come from a seeded policy (16,384 paths, 150 epochs, seed 7, 1%
+costs) gated in `tests/test_hedging.py` and rendered on the live results
+page (`scripts/make_site.py`); the ablation sweeps from
+`scripts/ablations.py` (12,288 paths, 120 epochs, seed 7 — writes
+`reports/ablations/`, regenerated locally).
+
 Gamma is not a training label; it is computed by a second autograd pass
 through the trained network.
 
@@ -59,6 +70,43 @@ wins on CVaR95 (−6.10 vs −6.39). Ablations: entropic λ sweet spot ≈ 1, a
 cost crossover at ≈ 0.5% below which delta wins, the policy ahead at every
 rebalance frequency, and a falsified hypothesis — a causal trailing-vol
 feature does not close the vol-shock loss.
+
+## Failure analysis
+
+Where this approach loses, with the measured numbers:
+
+- **Out-of-distribution spot.** Both learners degrade sharply outside the
+  training box — DML price MAE 0.45 vs 0.053 in-distribution (baseline:
+  1.33; table above). The API rejects out-of-box requests with a 422
+  rather than extrapolate silently, and the dashboard limits its sweeps
+  to the in-distribution band.
+- **Near-zero transaction costs.** Below a ~0.5% cost rate the learned
+  policy loses to weekly delta (cost sweep, `scripts/ablations.py`): at
+  0% costs delta reaches CVaR95 −1.40 vs the policy's −1.67; at 0.25%,
+  −2.07 vs −2.23; the crossover sits at ≈ 0.5% (−2.76 vs −2.77); from 1%
+  up the policy wins and at 2% it wins big (−5.51 vs −7.29). The deep
+  hedge pays for its cost awareness — with no costs to avoid, the
+  classical rule is better.
+- **Volatility regimes the features cannot see.** Rolled walk-forward
+  into a σ = 0.30 shock, the frozen policy loses to the delta it beats at
+  home (CVaR95 −6.30 vs −5.74; table on the live results page): its
+  features (log-moneyness, time, position) do not carry the volatility
+  regime while the delta baseline is handed the true σ. A causal
+  trailing-vol feature did NOT close the gap — it made the vol-shock
+  window worse (−6.79 vs −6.51; feature ablation) — a no-lookahead vol
+  estimate on a 26-date grid is too slow to inform hedging within the
+  horizon. Regime-awareness is future work, not a hidden assumption.
+- **Pathwise Monte Carlo gamma is invalid, not merely noisy.** The call
+  payoff's kink makes its second derivative a Dirac delta; backprop
+  through `clamp` returns zero almost everywhere. Gamma comes from a
+  second autograd pass through the trained network instead
+  (`dhps.bench.evaluate.greeks_curve`).
+- **Single-request overhead dominates at n = 1.** Batched inference is
+  ~0.8 µs per price, but one option through the network costs ~92 µs on
+  CPU and 355 µs on CUDA (per-call framework overhead, not compute —
+  measured in the benchmark speed rows, `scripts/benchmark.py`).
+  Throughput claims are batched claims; the API benchmark reports
+  per-request latency separately.
 
 ## HTTP API
 

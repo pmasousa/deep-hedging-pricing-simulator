@@ -1,0 +1,11 @@
+.git
+.github
+.venv
+.notes
+__pycache__
+*.pyc
+app
+assets
+reports
+tests
+walkthrough.ipynb

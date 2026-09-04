@@ -18,9 +18,12 @@ dependencies = [
 [project.optional-dependencies]
 # QuantLib reference validation (SP1); not needed for the core package.
 ql = ["QuantLib>=1.33"]
-dev = ["pytest>=8", "ruff>=0.6", "matplotlib>=3.8"]
+dev = ["pytest>=8", "ruff>=0.6", "matplotlib>=3.8", "fastapi>=0.115",
+       "httpx>=0.27"]
 # Interactive dashboard (app/dashboard.py).
 app = ["streamlit>=1.37", "plotly>=5.22"]
+# HTTP API over the trained models (dhps.api).
+api = ["fastapi>=0.115", "uvicorn>=0.30", "httpx>=0.27"]
 # Conflicting torch builds: pick exactly one (see [tool.uv]).
 cpu = ["torch>=2.2"]
 gpu = ["torch>=2.7"]  # Blackwell (sm_120) needs cu128+

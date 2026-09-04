@@ -544,7 +544,7 @@ wheels = [
 
 [[package]]
 name = "deep-hedging-pricing-simulator"
-version = "0.2.0"
+version = "1.0.0"
 source = { editable = "." }
 dependencies = [
     { name = "numpy", version = "2.4.6", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.12' or (extra == 'extra-30-deep-hedging-pricing-simulator-cpu' and extra == 'extra-30-deep-hedging-pricing-simulator-gpu')" },

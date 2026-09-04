@@ -28,7 +28,7 @@ def create_app() -> FastAPI:
 
     app = FastAPI(
         title="Deep Hedging & Pricing Simulator",
-        version="0.2.0",
+        version="1.0.0",
         description="Learned European pricing (differential ML) and "
                     "deep-hedging positions under transaction costs. "
                     "GET /meta for the models, budgets, and input box.",

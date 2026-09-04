@@ -50,6 +50,16 @@ beats weekly delta hedging on CVaR95 (−3.57 vs −4.24 at 1% costs) with
 less traded volume. A fairly priced book has zero expected P&L by
 construction; the improvement is cost efficiency, not alpha.
 
+Robustness, reproduced by `scripts/ablations.py`: the frozen policy rolls
+walk-forward across a training regime, a volatility shock, and a Heston
+structure break — and loses the vol-shock window honestly, because its
+features do not carry the volatility regime. Evaluated zero-shot on Heston
+paths against a variance-aware delta at the QuantLib premium, it still
+wins on CVaR95 (−6.10 vs −6.39). Ablations: entropic λ sweet spot ≈ 1, a
+cost crossover at ≈ 0.5% below which delta wins, the policy ahead at every
+rebalance frequency, and a falsified hypothesis — a causal trailing-vol
+feature does not close the vol-shock loss.
+
 ## HTTP API
 
 The same frozen learners behind three endpoints (`src/dhps/api/`):
@@ -114,7 +124,7 @@ src/dhps/
   models/       MLP, differential loss
   train/        training loop, run folders
   bench/        accuracy/OOD metrics, Greeks curves, matched-error speed
-  hedging/      cost-aware P&L simulator, deep hedging policy
+  hedging/      cost-aware P&L simulator, policy, walk-forward eval
   api/          FastAPI service over the frozen learners
 app/            Streamlit dashboard
 scripts/        train, benchmark, ablations, api latency, site

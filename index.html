@@ -192,9 +192,10 @@ hedging within the horizon.</p>
     vol vs delta</div><div id="c-abl-feat" class="chart"></div></div>
 </div>
 
-<h2>Served over HTTP</h2>
-<p class="lead">The frozen learners behind FastAPI endpoints — pricing and
-hedging at service latency. Requests outside the training box get a 422:
+<h2>API latency</h2>
+<p class="lead">The same frozen learners ship behind FastAPI endpoints — run
+from the repo or the CPU Docker image; nothing is deployed here. Measured
+single-request latency: requests outside the training box get a 422,
 out-of-distribution error is measured, not clamped.</p>
 <table><tr><th>endpoint</th><th>p50</th><th>p99</th></tr><tr><td>POST /price</td><td>2.1 ms</td><td>6.8 ms</td></tr><tr><td>POST /greeks</td><td>3.0 ms</td><td>17.7 ms</td></tr><tr><td>POST /hedge</td><td>1.9 ms</td><td>9.4 ms</td></tr></table>
 <p class="caption">Matched-error Monte Carlo: 140,921 µs

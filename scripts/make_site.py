@@ -610,7 +610,7 @@ under transaction costs (Buehler).</p>
 <h2>Benchmark status</h2>
 <div class="metrics">
   <div class="metric"><div class="k">Pricer &amp; Greeks</div>
-    <div class="v">3 routes</div><div class="s">agree to 1e-13</div></div>
+    <div class="v">3 routes</div><div class="s">autograd = analytic to 1e-10</div></div>
   <div class="metric"><div class="k">DML pricer</div>
     <div class="v">price MAE {acc['dml']['price_mae']:.2f}</div>
     <div class="s">2.4x better than baseline</div></div>

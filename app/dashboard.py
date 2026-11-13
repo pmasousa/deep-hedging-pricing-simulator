@@ -60,7 +60,7 @@ Pick a page above — every chart is computed live from this repo's library.
     st.subheader("Benchmark status")
     cols = st.columns(4)
     cols[0].metric("Pricer & Greeks", "3 routes",
-                   "agree to 1e-13", delta_color="off")
+                   "autograd = analytic to 1e-10", delta_color="off")
     cols[1].metric("DML pricer", "MAE 0.05",
                    "2.4x better than baseline", delta_color="off")
     cols[2].metric("Inference speed", "0.8 µs/price",
